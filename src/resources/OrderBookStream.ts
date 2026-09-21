@@ -1,8 +1,15 @@
 import { actionTypes, Controller } from '@data-client/react';
 import type { Manager, Middleware } from '@data-client/react';
 
-import { applyDepthEvents, type DepthUpdate } from './depthDiff';
 import { getOrderBook, OrderBook } from './OrderBook';
+
+type DepthUpdate = {
+  s: string;
+  U: number;
+  u: number;
+  b: unknown;
+  a: unknown;
+};
 
 const STREAM_HOST = 'wss://data-stream.binance.vision/ws';
 
@@ -185,33 +192,39 @@ export default class OrderBookStream implements Manager {
     this.tails.set(symbol, next);
   }
 
-  private async flush(symbol: string) {
-    const buffer = this.buffers.get(symbol);
-    if (!buffer?.length) return;
-    const book = this.controller.get(
+  private book(symbol: string) {
+    return this.controller.get(
       OrderBook,
       { symbol },
       this.controller.getState(),
     );
-    if (!book) return;
+  }
 
-    const { book: next, rest, gap } = applyDepthEvents(
-      {
-        lastUpdateId: book.lastUpdateId,
-        bids: book.bids,
-        asks: book.asks,
-      },
-      buffer,
-    );
-    this.buffers.set(symbol, rest);
-    if (next.lastUpdateId !== book.lastUpdateId) {
-      await this.controller.set(OrderBook, { symbol }, {
-        lastUpdateId: next.lastUpdateId,
-        bids: next.bids,
-        asks: next.asks,
-      });
+  /** Hand each diff to the entity. Merge applies it; a refused newer id is a gap. */
+  private async flush(symbol: string) {
+    const buffer = this.buffers.get(symbol);
+    if (!buffer?.length || !this.book(symbol)) return;
+
+    const pending = buffer.splice(0, buffer.length);
+    for (let i = 0; i < pending.length; i++) {
+      const event = pending[i];
+      const before = this.book(symbol);
+      if (!before) {
+        buffer.unshift(...pending.slice(i));
+        return;
+      }
+      await this.controller.set(OrderBook, { symbol }, event);
+      const after = this.book(symbol);
+      if (
+        after &&
+        event.u > before.lastUpdateId &&
+        after.lastUpdateId === before.lastUpdateId
+      ) {
+        buffer.unshift(...pending.slice(i));
+        this.resync(symbol);
+        return;
+      }
     }
-    if (gap) this.resync(symbol);
   }
 
   /** Snapshot again so buffered diffs can bridge `lastUpdateId`. */
