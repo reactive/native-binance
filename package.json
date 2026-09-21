@@ -1,0 +1,47 @@
+{
+  "name": "native-binance",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "yarn@4.17.1",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "vendor:silk": "node ./scripts/vendor-silk.mjs"
+  },
+  "dependencies": {
+    "@data-client/react": "^0.18.1",
+    "@data-client/rest": "^0.18.1",
+    "@reactive/silk-core": "file:./vendor/silk-core.tgz",
+    "@reactive/silk-native": "file:./vendor/silk-native.tgz",
+    "expo": "~58.0.0-preview.4",
+    "expo-constants": "~58.0.4",
+    "expo-font": "~58.0.2",
+    "expo-linking": "~58.0.4",
+    "expo-router": "~58.0.5",
+    "expo-splash-screen": "~58.0.1",
+    "expo-status-bar": "~58.0.1",
+    "expo-system-ui": "~58.0.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0-rc.1",
+    "react-native-gesture-handler": "~3.2.1",
+    "react-native-reanimated": "4.6.0",
+    "react-native-safe-area-context": "~5.9.1",
+    "react-native-screens": "~4.28.0",
+    "react-native-web": "~0.21.0",
+    "react-native-worklets": "0.12.2"
+  },
+  "devDependencies": {
+    "@data-client/test": "0.18.0",
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
+  },
+  "resolutions": {
+    "@reactive/silk-core": "file:./vendor/silk-core.tgz"
+  }
+}
