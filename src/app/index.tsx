@@ -1,4 +1,4 @@
-import { AsyncBoundary, useSuspense } from '@data-client/react';
+import { AsyncBoundary, useLive } from '@data-client/react';
 import { Box, Stack, Text } from '@reactive/silk-native';
 import { useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +8,7 @@ import { getOrderBook } from '@/resources/OrderBook';
 const SYMBOL = 'BTCUSDT';
 
 function BookSnapshot() {
-  const book = useSuspense(getOrderBook, { symbol: SYMBOL });
+  const book = useLive(getOrderBook, { symbol: SYMBOL });
 
   return (
     <Stack gap="2">

@@ -5,7 +5,7 @@ export type Level = [price: number, qty: number];
 const BINANCE_REST = 'https://data-api.binance.vision/api/v3';
 const BOOK_LIMIT = 100;
 
-function parseLevels(levels: unknown): Level[] {
+export function parseLevels(levels: unknown): Level[] {
   if (!Array.isArray(levels)) return [];
   const out: Level[] = [];
   for (const level of levels) {
@@ -86,7 +86,7 @@ export const getOrderBook = new RestEndpoint({
   schema: OrderBook,
   /** Binance rejects CORS preflight when GET sends Content-Type. */
   getRequestInit(this: { signal?: AbortSignal }) {
-    return { method: 'GET' as const, signal: this.signal };
+    return { method: 'GET' as const, signal: this.signal, cache: 'no-store' };
   },
   searchToString(searchParams: Record<string, unknown>) {
     return new URLSearchParams({
