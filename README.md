@@ -17,4 +17,4 @@ Scan the QR code with Expo Go on Android, or press `a` if an emulator is running
 
 ## End-to-end tests
 
-Expo Go is the personal dev client. Pull-request validation should use Maestro against an EAS build (`.apk` / iOS `.app`), not Expo Go. See the Expo guides for [EAS Workflows + Maestro](https://docs.expo.dev/eas/workflows/examples/e2e-tests/) and [Maestro on development builds](https://docs.expo.dev/tutorial/cicd/e2e-tests/).
+`yarn test` and `yarn web` are the routine checks. Maestro (`.maestro/book.yml`) runs on demand against an Android APK when a native module, navigation, gesture, or React Native layout needs a device: `eas workflow:run .eas/workflows/e2e-test-android.yml`.
