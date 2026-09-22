@@ -1,4 +1,4 @@
-import { AsyncBoundary, useLive, useQuery, useSuspense } from '@data-client/react';
+import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Badge, Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { router } from 'expo-router';
 import { useState, type JSX } from 'react';
@@ -14,6 +14,7 @@ import type { CandleInterval } from '@/resources/Candle';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 import { getTickers, Ticker } from '@/resources/Ticker';
+import { getWatching, setWatched } from '@/resources/Watching';
 
 const TOP_BAR = 48;
 const STRIP = 64;
@@ -45,6 +46,49 @@ function PairTitle({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
+function WatchFallback(): JSX.Element {
+  return (
+    <Pressable
+      testID="watch"
+      accessibilityRole="button"
+      accessibilityLabel="Watch"
+      accessibilityState={{ disabled: true }}
+      disabled
+      style={styles.hit}
+    >
+      <Text role="headingSm">☆</Text>
+    </Pressable>
+  );
+}
+
+function WatchToggle({ symbol }: { symbol: string }): JSX.Element {
+  const list = useSuspense(getWatching);
+  const instrument = useQuery(MarketSymbol, { symbol });
+  const controller = useController();
+  const known = instrument != null;
+  const watched = list.some(item => item.symbol === symbol);
+
+  function onPress() {
+    controller.fetch(setWatched, { symbol, watched: !watched }).catch(error => {
+      console.warn(error);
+    });
+  }
+
+  return (
+    <Pressable
+      testID="watch"
+      accessibilityRole="button"
+      accessibilityLabel={watched ? 'Stop watching' : 'Watch'}
+      accessibilityState={{ selected: watched, disabled: !known }}
+      disabled={!known}
+      onPress={onPress}
+      style={styles.hit}
+    >
+      <Text role="headingSm">{watched ? '★' : '☆'}</Text>
+    </Pressable>
+  );
+}
+
 function TopBar({ symbol }: { symbol: string }): JSX.Element {
   return (
     <View style={styles.topBar}>
@@ -68,14 +112,9 @@ function TopBar({ symbol }: { symbol: string }): JSX.Element {
           <PairTitle symbol={symbol} />
         </AsyncBoundary>
       </View>
-      <Pressable
-        testID="watch"
-        accessibilityRole="button"
-        accessibilityLabel="Watch"
-        style={styles.hit}
-      >
-        <Text role="headingSm">☆</Text>
-      </Pressable>
+      <AsyncBoundary fallback={<WatchFallback />}>
+        <WatchToggle symbol={symbol} />
+      </AsyncBoundary>
     </View>
   );
 }
