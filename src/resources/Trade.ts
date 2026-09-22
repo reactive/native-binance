@@ -13,9 +13,8 @@ export class Trade extends Entity {
   T = 0;
   m = false;
 
-  pk(_parent?: unknown, _key?: string, args?: readonly unknown[]): string {
-    const arg = args?.[0] as { symbol?: string } | undefined;
-    return `${(arg?.symbol ?? this.s).toUpperCase()}:${this.a}`;
+  pk(_parent?: unknown, _key?: string, args?: readonly { symbol?: string }[]): string {
+    return `${(args?.[0]?.symbol ?? this.s).toUpperCase()}:${this.a}`;
   }
 
   static key = 'Trade';
@@ -44,7 +43,6 @@ function aggIdOf(ref: string): number {
   return Number(ref.slice(ref.lastIndexOf(':') + 1));
 }
 
-/** Newest aggregate id first, one entry per id, capped at the tape length. */
 function newestFirst(existing: readonly string[], incoming: readonly string[]): string[] {
   const ids = [...new Set([...incoming, ...existing])];
   ids.sort((x, y) => aggIdOf(y) - aggIdOf(x));

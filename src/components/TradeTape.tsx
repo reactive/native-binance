@@ -11,7 +11,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
-import { hasNewTrades, holdTape, idleTape } from '@/components/holdTape';
+import { hasNewTrades, holdTape } from '@/components/holdTape';
 import { usePlaces } from '@/components/places';
 import { TRADE_ROW_HEIGHT, TradeRow, type TradePalette } from '@/components/TradeRow';
 import { getTrades, type Trade } from '@/resources/Trade';
@@ -48,8 +48,8 @@ export default function TradeTape({ symbol }: TradeTapeProps): JSX.Element {
   const liveRef = useRef(trades);
   liveRef.current = trades;
 
-  const [hold, dispatch] = useReducer(holdTape, idleTape);
-  const shown = (hold.held ?? trades) as Trade[];
+  const [hold, dispatch] = useReducer(holdTape<Trade>, { held: null });
+  const shown = hold.held ?? trades;
   const hasNew = hasNewTrades(hold.held, trades);
   const priceSample: number[] = [];
   const sizeSample: number[] = [];
