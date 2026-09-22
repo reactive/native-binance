@@ -5,9 +5,11 @@ import { useState, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import ChartBody from '@/components/ChartBody';
 import { InstrumentInfo } from '@/components/InstrumentInfo';
 import OrderBookView from '@/components/OrderBookView';
 import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/formatMarket';
+import type { CandleInterval } from '@/resources/Candle';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 import { getTickers, Ticker } from '@/resources/Ticker';
@@ -204,6 +206,7 @@ function LiveBook({ symbol }: { symbol: string }): JSX.Element {
 export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Element {
   const { theme } = useTheme();
   const [segment, setSegment] = useState<Segment>('Book');
+  const [chartInterval, setChartInterval] = useState<CandleInterval>('15m');
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
@@ -226,6 +229,12 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
           >
             <LiveBook symbol={symbol} />
           </AsyncBoundary>
+        : segment === 'Chart' ?
+          <ChartBody
+            symbol={symbol}
+            interval={chartInterval}
+            onInterval={setChartInterval}
+          />
         : segment === 'Info' ?
           <AsyncBoundary
             fallback={
