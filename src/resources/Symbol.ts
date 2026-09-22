@@ -66,15 +66,13 @@ export function instrumentFilters(raw: unknown): InstrumentFilters {
   };
 }
 
-const NO_FILTERS = instrumentFilters(undefined);
-
 /** Spot symbol from `GET /exchangeInfo`. Filter rules are read off `static schema`, not `process`. */
 export class MarketSymbol extends Entity {
   symbol = '';
   status = '';
   baseAsset = '';
   quoteAsset = '';
-  filters: InstrumentFilters = NO_FILTERS;
+  filters: InstrumentFilters = EMPTY_FILTERS;
 
   pk(): string {
     return this.symbol;
@@ -113,7 +111,7 @@ export const getExchangeInfo = new RestEndpoint({
   schema: { symbols: [MarketSymbol] },
   getRequestInit: binanceGetInit,
   url() {
-    return `${BINANCE_REST}/exchangeInfo?showPermissionSets=false`;
+    return `${RestEndpoint.prototype.url.call(this)}?showPermissionSets=false`;
   },
   process(response: { symbols?: unknown }) {
     const symbols = Array.isArray(response?.symbols) ? response.symbols : [];

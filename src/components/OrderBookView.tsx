@@ -158,7 +158,6 @@ export function OrderBookView({
     priceSample.push(bids[i][0]);
     sizeSample.push(bids[i][1]);
   }
-  // Numbers, not a lock object: a fresh object each render must not bust LevelRow.
   const places = usePlaces({ price: pricePlaces, size: sizePlaces }, priceSample, sizeSample);
 
   const barReference = useMemo(() => {

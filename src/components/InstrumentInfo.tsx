@@ -10,10 +10,6 @@ const ROW_HEIGHT = 48;
 const GUTTER = 12;
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
 
-function shown(value: string): string {
-  return value === '' ? '—' : value;
-}
-
 function InfoRow({
   testID,
   valueTestID,
@@ -33,7 +29,7 @@ function InfoRow({
   line: string;
   valueNode?: ReactNode;
 }): JSX.Element {
-  const text = shown(value);
+  const text = value === '' ? '—' : value;
   const withUnit = unit != null && value !== '';
   return (
     <View
