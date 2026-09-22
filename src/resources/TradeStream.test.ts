@@ -149,6 +149,40 @@ it('holds prints that arrive during a snapshot and writes them once', async () =
   }
 });
 
+it('releases the buffer when a second fetch is throttled onto the first response', async () => {
+  const { sockets, dispatch, sets, stream, restore } = harness();
+  try {
+    await dispatch(subscribe('BTCUSDT'));
+    await dispatch({
+      type: actionTypes.FETCH,
+      endpoint: getTrades,
+      args: [{ symbol: 'BTCUSDT' }],
+      meta: { fetchedAt: 5 },
+    } as never);
+    await dispatch({
+      type: actionTypes.FETCH,
+      endpoint: getTrades,
+      args: [{ symbol: 'BTCUSDT' }],
+      meta: { fetchedAt: 9 },
+    } as never);
+    sockets[0].onmessage?.({ data: JSON.stringify(frame(1)) });
+    expect(sets).toHaveLength(0);
+
+    await dispatch({
+      type: actionTypes.SET_RESPONSE,
+      endpoint: getTrades,
+      args: [{ symbol: 'BTCUSDT' }],
+      meta: { fetchedAt: 5 },
+    } as never);
+
+    expect(sets).toHaveLength(1);
+    expect(sets[0].value.map(row => (row as { a: number }).a)).toEqual([1]);
+  } finally {
+    stream.cleanup();
+    restore();
+  }
+});
+
 it('ignores another symbol, a non-trade frame, and invalid JSON', async () => {
   const { sockets, dispatch, sets, stream, restore, listed } = harness();
   try {
