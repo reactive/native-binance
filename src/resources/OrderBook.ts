@@ -1,6 +1,6 @@
 import { Entity, RestEndpoint } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit } from './hosts';
+import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
 
 export type Level = [price: number, qty: number];
 
@@ -158,6 +158,7 @@ export const getOrderBook = new RestEndpoint({
   searchParams: {} as { symbol: string },
   schema: OrderBook,
   getRequestInit: binanceGetInit,
+  errorPolicy: keepLastRead,
   searchToString(searchParams: Record<string, unknown>) {
     return new URLSearchParams({
       symbol: String(searchParams.symbol ?? ''),

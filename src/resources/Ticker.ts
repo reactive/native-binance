@@ -1,6 +1,6 @@
 import { Entity, RestEndpoint } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit } from './hosts';
+import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
 
 type TickerInput = {
   symbol?: string;
@@ -89,4 +89,5 @@ export const getTickers = new RestEndpoint({
   path: '/ticker/24hr',
   schema: [Ticker],
   getRequestInit: binanceGetInit,
+  errorPolicy: keepLastRead,
 });
