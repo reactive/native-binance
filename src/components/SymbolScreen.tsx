@@ -5,8 +5,9 @@ import { useState, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { InstrumentInfo } from '@/components/InstrumentInfo';
 import OrderBookView from '@/components/OrderBookView';
-import { formatLast, formatPercent, formatQuoteVolume } from '@/components/formatMarket';
+import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/formatMarket';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 import { getTickers, Ticker } from '@/resources/Ticker';
@@ -118,8 +119,8 @@ function PriceStrip({ symbol }: { symbol: string }): JSX.Element {
   const { theme } = useTheme();
   if (!ticker) return <PriceStripFallback />;
 
-  const tick = instrument?.tickSize ?? '';
-  const last = formatLast(ticker.last, tick);
+  const places = instrument?.pricePlaces ?? decimalsOf(ticker.last);
+  const last = formatPrice(ticker.last, places);
   const direction = ticker.percent > 0 ? 1 : ticker.percent < 0 ? -1 : 0;
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
@@ -145,8 +146,8 @@ function PriceStrip({ symbol }: { symbol: string }): JSX.Element {
         }
       </View>
       <View style={styles.stats}>
-        <Stat label="High" value={formatLast(ticker.high, tick)} testID="symbol-high" />
-        <Stat label="Low" value={formatLast(ticker.low, tick)} testID="symbol-low" />
+        <Stat label="High" value={formatPrice(ticker.high, places)} testID="symbol-high" />
+        <Stat label="Low" value={formatPrice(ticker.low, places)} testID="symbol-low" />
         <Stat
           label="Volume"
           value={formatQuoteVolume(ticker.quoteVolume)}
@@ -186,12 +187,16 @@ function Segments({
 
 function LiveBook({ symbol }: { symbol: string }): JSX.Element {
   const book = useLive(getOrderBook, { symbol });
+  // useQuery, not useSuspense: the book must not wait on exchange info.
+  const instrument = useQuery(MarketSymbol, { symbol });
   return (
     <OrderBookView
       symbol={book.symbol}
       bids={book.bids}
       asks={book.asks}
       spread={book.spread}
+      pricePlaces={instrument?.pricePlaces}
+      sizePlaces={instrument?.sizePlaces}
     />
   );
 }
@@ -220,6 +225,16 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
             }
           >
             <LiveBook symbol={symbol} />
+          </AsyncBoundary>
+        : segment === 'Info' ?
+          <AsyncBoundary
+            fallback={
+              <Text tone="secondary" testID="info-loading">
+                Loading {symbol}
+              </Text>
+            }
+          >
+            <InstrumentInfo symbol={symbol} />
           </AsyncBoundary>
         : null}
       </View>
