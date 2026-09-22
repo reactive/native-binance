@@ -108,6 +108,7 @@ export function MarketsChrome({
       </View>
       <ScrollView
         horizontal
+        keyboardShouldPersistTaps="handled"
         showsHorizontalScrollIndicator={false}
         style={styles.quotes}
         contentContainerStyle={styles.quotesContent}
@@ -201,6 +202,8 @@ export function MarketList({
           No markets match
         </Text>
       : <FlatList
+          // Quote, query, and sort start at the top. This key stays put while the book is open, so the offset is still here on the way back.
+          key={argsKey}
           testID="markets"
           data={ids}
           renderItem={renderItem}
