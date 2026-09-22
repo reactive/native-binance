@@ -20,15 +20,7 @@ export const WatchList = new Collection([WatchedSymbol], {
 
 /** Rehydrate from this phone, not from Binance. */
 export const getWatching = new Endpoint(
-  () => {
-    const rows = readWatched().map(symbol => ({ symbol }));
-    // A microtask during the first render of a lazy route is dropped: React warns
-    // that the store updated a component that has not mounted, and the star stays
-    // on its fallback. A timer settles after that commit.
-    return new Promise<typeof rows>(resolve => {
-      setTimeout(() => resolve(rows), 0);
-    });
-  },
+  () => Promise.resolve(readWatched().map(symbol => ({ symbol }))),
   { name: 'getWatching', schema: WatchList, dataExpiryLength: Infinity },
 );
 

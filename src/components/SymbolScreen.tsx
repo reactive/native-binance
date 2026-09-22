@@ -1,7 +1,7 @@
 import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Badge, Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { router } from 'expo-router';
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -89,6 +89,22 @@ function WatchToggle({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
+function WatchControl({ symbol }: { symbol: string }): JSX.Element {
+  const [mounted, setMounted] = useState(false);
+  // The lazy route's first render is still inside the route promise. A fetch that
+  // settles there updates the store before the provider has mounted, and the star
+  // stays on this fallback. Wait until this screen has committed.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return <WatchFallback />;
+  return (
+    <AsyncBoundary fallback={<WatchFallback />}>
+      <WatchToggle symbol={symbol} />
+    </AsyncBoundary>
+  );
+}
+
 function TopBar({ symbol }: { symbol: string }): JSX.Element {
   return (
     <View style={styles.topBar}>
@@ -112,9 +128,7 @@ function TopBar({ symbol }: { symbol: string }): JSX.Element {
           <PairTitle symbol={symbol} />
         </AsyncBoundary>
       </View>
-      <AsyncBoundary fallback={<WatchFallback />}>
-        <WatchToggle symbol={symbol} />
-      </AsyncBoundary>
+      <WatchControl symbol={symbol} />
     </View>
   );
 }
