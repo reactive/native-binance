@@ -20,6 +20,10 @@ export type OrderBookViewProps = {
   /** Price ascending; best ask is asks[0]. */
   asks: readonly Level[];
   spread: number;
+  /** Instrument tick places. Omitted until Symbol has loaded, so prices only widen. */
+  pricePlaces?: number;
+  /** Instrument step places. Omitted until Symbol has loaded, so sizes only widen. */
+  sizePlaces?: number;
 };
 
 /** Fixed row height so FlatList can use getItemLayout; bodySm (14px) text sits centered. */
@@ -123,6 +127,8 @@ export function OrderBookView({
   bids,
   asks,
   spread,
+  pricePlaces,
+  sizePlaces,
 }: OrderBookViewProps): JSX.Element {
   const { theme } = useTheme();
   const color = theme.semantic.color;
@@ -152,8 +158,8 @@ export function OrderBookView({
     priceSample.push(bids[i][0]);
     sizeSample.push(bids[i][1]);
   }
-  // Decimal places only ever widen until an instrument lock arrives.
-  const places = usePlaces({}, priceSample, sizeSample);
+  // Numbers, not a lock object: a fresh object each render must not bust LevelRow.
+  const places = usePlaces({ price: pricePlaces, size: sizePlaces }, priceSample, sizeSample);
 
   const barReference = useMemo(() => {
     const mean =

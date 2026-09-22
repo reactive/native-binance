@@ -186,12 +186,16 @@ function Segments({
 
 function LiveBook({ symbol }: { symbol: string }): JSX.Element {
   const book = useLive(getOrderBook, { symbol });
+  // useQuery, not useSuspense: the book must not wait on exchange info.
+  const instrument = useQuery(MarketSymbol, { symbol });
   return (
     <OrderBookView
       symbol={book.symbol}
       bids={book.bids}
       asks={book.asks}
       spread={book.spread}
+      pricePlaces={instrument?.pricePlaces}
+      sizePlaces={instrument?.sizePlaces}
     />
   );
 }
