@@ -317,9 +317,11 @@ export function OrderBookView({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    minHeight: 0,
   },
   list: {
     flex: 1,
+    minHeight: 0,
   },
   row: {
     height: ROW_HEIGHT,

@@ -24,3 +24,22 @@ export function formatPercent(fraction: number): string {
   const sign = pct > 0 ? '+' : '';
   return `${sign}${pct.toFixed(2)}%`;
 }
+
+const VOLUME_TIERS = [
+  [1e12, 'T'],
+  [1e9, 'B'],
+  [1e6, 'M'],
+  [1e3, 'K'],
+] as const;
+
+/** Compact quote volume so high, low, and volume share one 360px line. */
+export function formatQuoteVolume(value: number): string {
+  const abs = Math.abs(value);
+  for (const [size, unit] of VOLUME_TIERS) {
+    if (abs < size) continue;
+    const scaled = value / size;
+    const digits = Math.abs(scaled) >= 100 ? 0 : Math.abs(scaled) >= 10 ? 1 : 2;
+    return `${scaled.toFixed(digits)}${unit}`;
+  }
+  return formatLast(value, '0.01');
+}

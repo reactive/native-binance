@@ -62,7 +62,7 @@ function Chip({ label, selected, onPress, testID }: ChipProps): JSX.Element {
 }
 
 function openBook(symbol: string) {
-  router.push(`/book/${symbol}` as Href);
+  router.push(`/symbol/${symbol}` as Href);
 }
 
 function getItemLayout(_: ArrayLike<string> | null | undefined, index: number) {
