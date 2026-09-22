@@ -129,15 +129,24 @@ function setTicker(
 }
 
 it('keeps a newer last price when an older ticker arrives', async () => {
-  const { result, controller } = renderDataHook(() => useQuery(Ticker, { symbol: 'BTCUSDT' }), {
-    initialFixtures: [
-      {
-        endpoint: getTickers,
-        args: [],
-        response: [ticker('BTCUSDT', '101', '100', '50', 1_000)],
-      },
-    ],
-  });
+  const { result, controller } = renderDataHook(
+    () => ({
+      btc: useQuery(Ticker, { symbol: 'BTCUSDT' }),
+      eth: useQuery(Ticker, { symbol: 'ETHUSDT' }),
+    }),
+    {
+      initialFixtures: [
+        {
+          endpoint: getTickers,
+          args: [],
+          response: [
+            ticker('BTCUSDT', '101', '100', '50', 1_000),
+            ticker('ETHUSDT', '110', '100', '20', 1_000),
+          ],
+        },
+      ],
+    },
+  );
 
   await setTicker(controller, {
     e: '24hrMiniTicker',
@@ -150,12 +159,14 @@ it('keeps a newer last price when an older ticker arrives', async () => {
     v: '3',
     q: '60',
   });
-  expect(result.current?.last).toBe(120);
-  expect(result.current?.quoteVolume).toBe(60);
+  expect(result.current.btc?.last).toBe(120);
+  expect(result.current.btc?.quoteVolume).toBe(60);
+  expect(result.current.eth?.last).toBe(110);
 
   await setTicker(controller, ticker('BTCUSDT', '1', '1', '1', 500));
-  expect(result.current?.last).toBe(120);
-  expect(result.current?.eventTime).toBe(2_000);
+  expect(result.current.btc?.last).toBe(120);
+  expect(result.current.btc?.eventTime).toBe(2_000);
+  expect(result.current.eth?.last).toBe(110);
 });
 
 it('reads a mini-ticker array', () => {

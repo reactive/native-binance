@@ -152,7 +152,7 @@ export function MarketList({
   }, [volumesReady, liveIds]);
 
   const holdFinger = useCallback(() => {
-    dispatch({ type: 'down' });
+    dispatch({ type: 'down', ids: liveRef.current });
   }, []);
   const releaseFinger = useCallback(() => {
     dispatch({ type: 'up', ids: liveRef.current });

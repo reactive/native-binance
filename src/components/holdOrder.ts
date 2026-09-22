@@ -8,21 +8,27 @@ export const idleHold: HoldState = { committed: null, holding: false, ready: fal
 
 export type HoldEvent =
   | { type: 'ready'; ids: readonly string[] }
-  | { type: 'down' }
+  | { type: 'down'; ids: readonly string[] }
   | { type: 'up'; ids: readonly string[] }
   | { type: 'args'; ids: readonly string[]; ready: boolean };
 
 /**
- * Volume order commits once quotes are in, stays put while a finger is down,
- * and applies again when the finger lifts or the quote/sort args change.
+ * The ids on screen freeze when a finger goes down, including before the first
+ * volume sort. That sort commits once the finger is up. Quote and sort changes
+ * apply immediately.
  */
 export function holdOrder(state: HoldState, event: HoldEvent): HoldState {
   switch (event.type) {
     case 'down':
-      return state.holding ? state : { ...state, holding: true };
+      if (state.holding) return state;
+      return {
+        ...state,
+        holding: true,
+        committed: state.committed ?? event.ids,
+      };
     case 'up':
       if (!state.holding) return state;
-      if (!state.ready) return { ...state, holding: false };
+      if (!state.ready) return { ...state, holding: false, committed: null };
       return { holding: false, ready: true, committed: event.ids };
     case 'args':
       return {
@@ -31,9 +37,8 @@ export function holdOrder(state: HoldState, event: HoldEvent): HoldState {
         committed: event.ready ? event.ids : null,
       };
     case 'ready':
-      if (state.holding || state.ready) return state;
+      if (state.holding) return state.ready ? state : { ...state, ready: true };
+      if (state.ready) return state;
       return { holding: false, ready: true, committed: event.ids };
-    default:
-      return state;
   }
 }

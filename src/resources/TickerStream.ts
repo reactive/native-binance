@@ -2,7 +2,7 @@ import { actionTypes, Controller } from '@data-client/react';
 import type { Manager, Middleware } from '@data-client/react';
 
 import { BINANCE_STREAM } from './hosts';
-import { getTickers } from './Ticker';
+import { getTickers, Ticker } from './Ticker';
 
 const STREAM_URL = `${BINANCE_STREAM}/!miniTicker@arr`;
 
@@ -23,6 +23,21 @@ export function readMiniTickers(data: unknown): object[] | undefined {
   return;
 }
 
+function symbolOf(row: object): string | undefined {
+  const record = row as { s?: unknown; symbol?: unknown };
+  const raw = typeof record.s === 'string' ? record.s : record.symbol;
+  return typeof raw === 'string' && raw ? raw.toUpperCase() : undefined;
+}
+
+/** Later rows for the same symbol replace earlier ones. Other symbols stay. */
+export function mergeTickerRows(pending: Map<string, object>, rows: readonly object[]): void {
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const symbol = symbolOf(row);
+    if (symbol) pending.set(symbol, row);
+  }
+}
+
 /** Keeps `Ticker` current from the all-market mini-ticker while Markets is subscribed. */
 export default class TickerStream implements Manager {
   protected controller: Controller = new Controller();
@@ -31,7 +46,7 @@ export default class TickerStream implements Manager {
   private generation = 0;
   private attempts = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  private pending: object[] | undefined;
+  private pending = new Map<string, object>();
   private writing = false;
 
   middleware: Middleware = controller => {
@@ -72,7 +87,7 @@ export default class TickerStream implements Manager {
     this.generation += 1;
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
-    this.pending = undefined;
+    this.pending = new Map();
     const socket = this.socket;
     this.socket = undefined;
     socket?.close();
@@ -86,7 +101,7 @@ export default class TickerStream implements Manager {
       if (this.generation !== gen) return;
       const rows = readMiniTickers(event.data);
       if (!rows) return;
-      this.pending = rows;
+      mergeTickerRows(this.pending, rows);
       this.flush();
     };
     socket.onopen = () => {
@@ -114,15 +129,18 @@ export default class TickerStream implements Manager {
     }, delay);
   }
 
-  /** Keep the newest array if a write is still in flight. The stream is a full snapshot. */
+  /** Each message is a change-set. Writes merge one entity at a time and keep every symbol that arrived while a write was in flight. */
   private flush() {
-    if (this.writing || !this.pending) return;
-    const rows = this.pending;
-    this.pending = undefined;
+    if (this.writing || this.pending.size === 0) return;
+    const batch = this.pending;
+    this.pending = new Map();
     this.writing = true;
-    void Promise.resolve(this.controller.setResponse(getTickers, rows)).finally(() => {
+    const writes = [...batch].map(([symbol, row]) =>
+      this.controller.set(Ticker, { symbol }, row),
+    );
+    void Promise.all(writes).finally(() => {
       this.writing = false;
-      if (this.pending) this.flush();
+      if (this.pending.size > 0) this.flush();
     });
   }
 }
