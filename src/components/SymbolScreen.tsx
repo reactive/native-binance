@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import OrderBookView from '@/components/OrderBookView';
-import { formatLast, formatPercent, formatQuoteVolume } from '@/components/formatMarket';
+import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/formatMarket';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 import { getTickers, Ticker } from '@/resources/Ticker';
@@ -118,8 +118,8 @@ function PriceStrip({ symbol }: { symbol: string }): JSX.Element {
   const { theme } = useTheme();
   if (!ticker) return <PriceStripFallback />;
 
-  const tick = instrument?.tickSize ?? '';
-  const last = formatLast(ticker.last, tick);
+  const places = instrument?.pricePlaces ?? decimalsOf(ticker.last);
+  const last = formatPrice(ticker.last, places);
   const direction = ticker.percent > 0 ? 1 : ticker.percent < 0 ? -1 : 0;
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
@@ -145,8 +145,8 @@ function PriceStrip({ symbol }: { symbol: string }): JSX.Element {
         }
       </View>
       <View style={styles.stats}>
-        <Stat label="High" value={formatLast(ticker.high, tick)} testID="symbol-high" />
-        <Stat label="Low" value={formatLast(ticker.low, tick)} testID="symbol-low" />
+        <Stat label="High" value={formatPrice(ticker.high, places)} testID="symbol-high" />
+        <Stat label="Low" value={formatPrice(ticker.low, places)} testID="symbol-low" />
         <Stat
           label="Volume"
           value={formatQuoteVolume(ticker.quoteVolume)}
