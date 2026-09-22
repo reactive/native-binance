@@ -1,4 +1,4 @@
-import { candleLayout, candleMetrics, plotSize } from './candleLayout';
+import { candleLayout, candleMetrics, plotDeviceShift, plotSize } from './candleLayout';
 
 it('sizes the plot from the window and the safe insets', () => {
   expect(plotSize(384, 832, 47, 24)).toEqual({ width: 360, height: 521 });
@@ -24,6 +24,12 @@ it('snaps candle slots onto device pixels and right-aligns the series', () => {
     expect(layout[59].x + metrics.bodyCss).toBeCloseTo(360, 5);
     expect(layout[59].x).toBeGreaterThan(layout[0].x);
   }
+});
+
+it('shifts the device layer onto the pixel grid at ratio 3.75', () => {
+  expect(plotDeviceShift(47, 0, 3.75)).toEqual({ x: 0, y: 0.25 });
+  expect(plotDeviceShift(47, 0, 3)).toEqual({ x: 0, y: 0 });
+  expect(plotDeviceShift(48, 0, 3.75)).toEqual({ x: 0, y: 0 });
 });
 
 it('keeps a flat series and a doji visible', () => {

@@ -4,6 +4,9 @@ const CHROME = 156;
 const INTERVAL_ROW = 44;
 const READOUT = 40;
 const GUTTER = 24;
+/** Top bar, price strip, segment, and interval chips. Plot screen y is the top inset plus this. */
+const ABOVE_PLOT = 200;
+const PLOT_MARGIN = 12;
 
 export type CandleDirection = 'up' | 'down' | 'flat';
 
@@ -44,6 +47,25 @@ export function plotSize(
     width: windowWidth - GUTTER,
     height: windowHeight - insetTop - insetBottom - CHROME - INTERVAL_ROW - READOUT,
   };
+}
+
+/**
+ * Fractional device pixels of the plot's screen origin.
+ * At 3.75 the fixture origin is 0.25px below a device row, which antialiases every horizontal edge.
+ * The plot shifts its device-pixel layer up by this amount before scaling back to CSS px.
+ */
+export function plotDeviceShift(
+  insetTop: number,
+  insetLeft: number,
+  ratio: number,
+): { x: number; y: number } {
+  const frac = (css: number) => {
+    const whole = css * ratio;
+    const part = whole - Math.floor(whole);
+    if (part < 1e-4 || 1 - part < 1e-4) return 0;
+    return part;
+  };
+  return { x: frac(insetLeft + PLOT_MARGIN), y: frac(insetTop + ABOVE_PLOT) };
 }
 
 export function candleMetrics(width: number, ratio: number): CandleMetrics {

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { candleLayout, candleMetrics, plotSize } from '@/components/candleLayout';
+import { candleLayout, candleMetrics, plotDeviceShift, plotSize } from '@/components/candleLayout';
 import { formatLast } from '@/components/formatMarket';
 import {
   getCandles,
@@ -122,12 +122,16 @@ function CandlePlot({
   candles,
   width,
   height,
+  insetTop,
+  insetLeft,
 }: {
   symbol: string;
   interval: CandleInterval;
   candles: readonly Candle[];
   width: number;
   height: number;
+  insetTop: number;
+  insetLeft: number;
 }): JSX.Element {
   useSuspense(getExchangeInfo);
   const instrument = useQuery(MarketSymbol, { symbol });
@@ -135,12 +139,13 @@ function CandlePlot({
   const ratio = PixelRatio.get();
   const metrics = candleMetrics(width, ratio);
   const placed = candleLayout(candles, { width, height, ratio });
+  const shift = plotDeviceShift(insetTop, insetLeft, ratio);
   const last = candles[candles.length - 1];
   const tick = instrument?.tickSize ?? '';
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
   const flat = theme.semantic.color.textSecondary;
-  const wickOffset = (metrics.bodyCss - metrics.wickCss) / 2;
+  const wickOffset = (metrics.body - metrics.wick) / 2;
 
   return (
     <View
@@ -149,42 +154,58 @@ function CandlePlot({
       accessibilityLabel={`${symbol} ${intervalLabel(interval)} candles. Open ${formatLast(last.open, tick)}, high ${formatLast(last.high, tick)}, low ${formatLast(last.low, tick)}, close ${formatLast(last.close, tick)}`}
       style={[styles.plot, { width, height }]}
     >
-      {placed.map((item, index) => {
-        const candle = candles[index];
-        const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
-        const newest = index === placed.length - 1;
-        return (
-          <Fragment key={candle.openTime}>
-            <View
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: item.x + wickOffset,
-                top: item.wickTop,
-                width: metrics.wickCss,
-                height: item.wickHeight,
-                backgroundColor: color,
-              }}
-            />
-            <View
-              testID={newest ? 'candle-last' : undefined}
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: item.x,
-                top: item.bodyTop,
-                width: metrics.bodyCss,
-                height: item.bodyHeight,
-                backgroundColor: color,
-              }}
-            />
-          </Fragment>
-        );
-      })}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: width * ratio,
+          height: height * ratio,
+          transformOrigin: 'left top',
+          // Translate in device pixels, then scale back to CSS px. CSS lengths snap to 1/64px,
+          // which cannot land an 18-device-px body on the pixel grid at ratio 3.75.
+          transform: [{ scale: 1 / ratio }, { translateX: -shift.x }, { translateY: -shift.y }],
+        }}
+      >
+        {placed.map((item, index) => {
+          const candle = candles[index];
+          const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
+          const newest = index === placed.length - 1;
+          const x = Math.round(item.x * ratio);
+          return (
+            <Fragment key={candle.openTime}>
+              <View
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: x + wickOffset,
+                  top: Math.round(item.wickTop * ratio),
+                  width: metrics.wick,
+                  height: Math.round(item.wickHeight * ratio),
+                  backgroundColor: color,
+                }}
+              />
+              <View
+                testID={newest ? 'candle-last' : undefined}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: x,
+                  top: Math.round(item.bodyTop * ratio),
+                  width: metrics.body,
+                  height: Math.round(item.bodyHeight * ratio),
+                  backgroundColor: color,
+                }}
+              />
+            </Fragment>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -194,11 +215,15 @@ function LiveCandles({
   interval,
   width,
   height,
+  insetTop,
+  insetLeft,
 }: {
   symbol: string;
   interval: CandleInterval;
   width: number;
   height: number;
+  insetTop: number;
+  insetLeft: number;
 }): JSX.Element {
   const candles = useLive(getCandles, { symbol, interval });
   if (candles.length === 0) {
@@ -217,6 +242,8 @@ function LiveCandles({
         candles={candles}
         width={width}
         height={height}
+        insetTop={insetTop}
+        insetLeft={insetLeft}
       />
       <CandleReadout symbol={symbol} candle={last} />
     </View>
@@ -246,7 +273,14 @@ export default function ChartBody({
           </Text>
         }
       >
-        <LiveCandles symbol={symbol} interval={interval} width={plot.width} height={plot.height} />
+        <LiveCandles
+          symbol={symbol}
+          interval={interval}
+          width={plot.width}
+          height={plot.height}
+          insetTop={insets.top}
+          insetLeft={insets.left}
+        />
       </AsyncBoundary>
     </View>
   );
@@ -272,6 +306,7 @@ const styles = StyleSheet.create({
   plot: {
     marginHorizontal: GUTTER,
     position: 'relative',
+    overflow: 'hidden',
   },
   readout: {
     height: 40,
