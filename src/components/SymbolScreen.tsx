@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import OrderBookView from '@/components/OrderBookView';
+import TradeTape from '@/components/TradeTape';
 import { formatLast, formatPercent, formatQuoteVolume } from '@/components/formatMarket';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
@@ -210,7 +211,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
         <PriceStrip symbol={symbol} />
       </AsyncBoundary>
       <Segments segment={segment} onSelect={setSegment} />
-      <View style={styles.body}>
+      <View style={styles.body} testID="symbol-body">
         {segment === 'Book' ?
           <AsyncBoundary
             fallback={
@@ -220,6 +221,16 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
             }
           >
             <LiveBook symbol={symbol} />
+          </AsyncBoundary>
+        : segment === 'Trades' ?
+          <AsyncBoundary
+            fallback={
+              <Text tone="secondary" testID="trades-loading">
+                Loading {symbol}
+              </Text>
+            }
+          >
+            <TradeTape symbol={symbol} />
           </AsyncBoundary>
         : null}
       </View>
