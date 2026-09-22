@@ -1,20 +1,16 @@
-import { AsyncBoundary, useLive, useSuspense } from '@data-client/react';
+import { AsyncBoundary, useSuspense } from '@data-client/react';
 import { Heading, Skeleton, useTheme } from '@reactive/silk-native';
 import { useState, type JSX } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LoadError } from '@/components/LoadError';
 import { MARKET_ROW_HEIGHT } from '@/components/MarketRow';
 import { MarketList, MarketsChrome } from '@/components/MarketsScreen';
+import { TickerFeed } from '@/components/TickerFeed';
 import type { MarketSort } from '@/resources/Markets';
 import { getExchangeInfo } from '@/resources/Symbol';
-import { getTickers } from '@/resources/Ticker';
 import { getWatching } from '@/resources/Watching';
-
-function TickerFeed(): null {
-  useLive(getTickers);
-  return null;
-}
 
 function Markets(): JSX.Element {
   useSuspense(getExchangeInfo);
@@ -28,9 +24,7 @@ function Markets(): JSX.Element {
 
   return (
     <View style={styles.body}>
-      <AsyncBoundary fallback={null}>
-        <TickerFeed />
-      </AsyncBoundary>
+      <TickerFeed />
       <MarketsChrome
         quote={quote}
         sort={sort}
@@ -46,6 +40,23 @@ function Markets(): JSX.Element {
         onQuery={setQuery}
       />
       <MarketList quote={quote} sort={sort} query={query} watching={watching} watchKey={watchKey} />
+    </View>
+  );
+}
+
+function MarketsError({
+  resetErrorBoundary,
+}: {
+  resetErrorBoundary: () => void;
+}): JSX.Element {
+  return (
+    <View style={styles.body}>
+      <View style={styles.title}>
+        <Heading level="1" size="md">
+          Markets
+        </Heading>
+      </View>
+      <LoadError what="the markets" onRetry={resetErrorBoundary} />
     </View>
   );
 }
@@ -76,7 +87,7 @@ export default function HomeScreen(): JSX.Element {
   const { theme } = useTheme();
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
-      <AsyncBoundary fallback={<MarketsLoading />}>
+      <AsyncBoundary fallback={<MarketsLoading />} errorComponent={MarketsError}>
         <Markets />
       </AsyncBoundary>
     </SafeAreaView>
