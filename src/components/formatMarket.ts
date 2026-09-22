@@ -37,6 +37,16 @@ export function trimDecimal(text: string): string {
   return text.replace(/0+$/, '').replace(/\.$/, '');
 }
 
+function pad2(value: number): string {
+  return value < 10 ? `0${value}` : String(value);
+}
+
+/** `HH:mm:ss` in the phone's zone. Uses local date fields so Hermes `Intl` is not required. */
+export function formatClock(ms: number): string {
+  const date = new Date(ms);
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
 export function formatPercent(fraction: number): string {
   const pct = fraction * 100;
   const sign = pct > 0 ? '+' : '';

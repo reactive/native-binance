@@ -1,4 +1,5 @@
 import { actionTypes } from '@data-client/react';
+import type { Controller } from '@data-client/react';
 
 import { getCandles, upsertCandle } from './Candle';
 import CandleStream from './CandleStream';
@@ -49,7 +50,7 @@ async function dispatch(
   type: typeof actionTypes.SUBSCRIBE | typeof actionTypes.UNSUBSCRIBE,
   args: { symbol: string; interval: string },
 ) {
-  const next = stream.middleware(ctrl as never);
+  const next = stream.middleware(ctrl as unknown as Controller);
   await next(() => Promise.resolve())({
     type,
     endpoint: getCandles,

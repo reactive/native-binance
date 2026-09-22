@@ -1,4 +1,5 @@
 import { actionTypes } from '@data-client/react';
+import type { Controller } from '@data-client/react';
 import { act } from 'react';
 
 import { getTickers } from './Ticker';
@@ -59,7 +60,7 @@ it('writes symbols from a batch that arrived while the previous write was in fli
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
   try {
     const stream = new TickerStream();
-    const next = stream.middleware(controller as never);
+    const next = stream.middleware(controller as unknown as Controller);
     await next(() => Promise.resolve())({
       type: actionTypes.SUBSCRIBE,
       endpoint: getTickers,
