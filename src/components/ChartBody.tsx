@@ -1,0 +1,289 @@
+import { AsyncBoundary, useLive, useQuery, useSuspense } from '@data-client/react';
+import { Text, useTheme } from '@reactive/silk-native';
+import { Fragment, type JSX } from 'react';
+import {
+  PixelRatio,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  type TextStyle,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { candleLayout, candleMetrics, plotSize } from '@/components/candleLayout';
+import { formatLast } from '@/components/formatMarket';
+import {
+  getCandles,
+  INTERVALS,
+  type Candle,
+  type CandleInterval,
+} from '@/resources/Candle';
+import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
+
+const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
+const GUTTER = 12;
+
+function intervalLabel(interval: CandleInterval): string {
+  return INTERVALS.find(item => item.value === interval)?.label ?? interval;
+}
+
+function IntervalChips({
+  value,
+  onSelect,
+}: {
+  value: CandleInterval;
+  onSelect: (interval: CandleInterval) => void;
+}): JSX.Element {
+  return (
+    <View style={styles.chips}>
+      {INTERVALS.map(item => {
+        const selected = item.value === value;
+        return (
+          <Pressable
+            key={item.value}
+            testID={`interval-${item.value}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            onPress={() => onSelect(item.value)}
+            style={styles.chip}
+          >
+            <Text role="label" tone={selected ? 'primary' : 'secondary'}>
+              {item.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function CandleReadout({
+  symbol,
+  candle,
+}: {
+  symbol: string;
+  candle: Candle;
+}): JSX.Element {
+  useSuspense(getExchangeInfo);
+  const instrument = useQuery(MarketSymbol, { symbol });
+  const { theme } = useTheme();
+  const tick = instrument?.tickSize ?? '';
+  const up = theme.semantic.color.tones.success.solid;
+  const down = theme.semantic.color.tones.danger.solid;
+  const closeColor = candle.close > candle.open ? up : candle.close < candle.open ? down : undefined;
+
+  return (
+    <View style={styles.readout}>
+      <ReadoutItem label="Open" value={formatLast(candle.open, tick)} testID="candle-open" />
+      <ReadoutItem label="High" value={formatLast(candle.high, tick)} testID="candle-high" />
+      <ReadoutItem label="Low" value={formatLast(candle.low, tick)} testID="candle-low" />
+      <ReadoutItem
+        label="Close"
+        value={formatLast(candle.close, tick)}
+        testID="candle-close"
+        color={closeColor}
+      />
+    </View>
+  );
+}
+
+function ReadoutItem({
+  label,
+  value,
+  testID,
+  color,
+}: {
+  label: string;
+  value: string;
+  testID: string;
+  color?: string;
+}): JSX.Element {
+  return (
+    <View style={styles.readoutItem}>
+      <Text role="caption" tone="secondary">
+        {label}
+      </Text>
+      <Text
+        role="caption"
+        numberOfLines={1}
+        style={[TABULAR, color ? { color } : null]}
+        testID={testID}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function CandlePlot({
+  symbol,
+  interval,
+  candles,
+  width,
+  height,
+}: {
+  symbol: string;
+  interval: CandleInterval;
+  candles: readonly Candle[];
+  width: number;
+  height: number;
+}): JSX.Element {
+  useSuspense(getExchangeInfo);
+  const instrument = useQuery(MarketSymbol, { symbol });
+  const { theme } = useTheme();
+  const ratio = PixelRatio.get();
+  const metrics = candleMetrics(width, ratio);
+  const placed = candleLayout(candles, { width, height, ratio });
+  const last = candles[candles.length - 1];
+  const tick = instrument?.tickSize ?? '';
+  const up = theme.semantic.color.tones.success.solid;
+  const down = theme.semantic.color.tones.danger.solid;
+  const flat = theme.semantic.color.textSecondary;
+  const wickOffset = (metrics.bodyCss - metrics.wickCss) / 2;
+
+  return (
+    <View
+      testID="candles"
+      accessible
+      accessibilityLabel={`${symbol} ${intervalLabel(interval)} candles. Open ${formatLast(last.open, tick)}, high ${formatLast(last.high, tick)}, low ${formatLast(last.low, tick)}, close ${formatLast(last.close, tick)}`}
+      style={[styles.plot, { width, height }]}
+    >
+      {placed.map((item, index) => {
+        const candle = candles[index];
+        const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
+        const newest = index === placed.length - 1;
+        return (
+          <Fragment key={candle.openTime}>
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: item.x + wickOffset,
+                top: item.wickTop,
+                width: metrics.wickCss,
+                height: item.wickHeight,
+                backgroundColor: color,
+              }}
+            />
+            <View
+              testID={newest ? 'candle-last' : undefined}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: item.x,
+                top: item.bodyTop,
+                width: metrics.bodyCss,
+                height: item.bodyHeight,
+                backgroundColor: color,
+              }}
+            />
+          </Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+function LiveCandles({
+  symbol,
+  interval,
+  width,
+  height,
+}: {
+  symbol: string;
+  interval: CandleInterval;
+  width: number;
+  height: number;
+}): JSX.Element {
+  const candles = useLive(getCandles, { symbol, interval });
+  if (candles.length === 0) {
+    return (
+      <Text tone="secondary" testID="chart-empty">
+        No candles yet
+      </Text>
+    );
+  }
+  const last = candles[candles.length - 1];
+  return (
+    <View>
+      <CandlePlot
+        symbol={symbol}
+        interval={interval}
+        candles={candles}
+        width={width}
+        height={height}
+      />
+      <CandleReadout symbol={symbol} candle={last} />
+    </View>
+  );
+}
+
+export default function ChartBody({
+  symbol,
+  interval,
+  onInterval,
+}: {
+  symbol: string;
+  interval: CandleInterval;
+  onInterval: (interval: CandleInterval) => void;
+}): JSX.Element {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const plot = plotSize(width, height, insets.top, insets.bottom);
+
+  return (
+    <View style={styles.body}>
+      <IntervalChips value={interval} onSelect={onInterval} />
+      <AsyncBoundary
+        fallback={
+          <Text tone="secondary" testID="chart-loading">
+            Loading {symbol}
+          </Text>
+        }
+      >
+        <LiveCandles symbol={symbol} interval={interval} width={plot.width} height={plot.height} />
+      </AsyncBoundary>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  body: {
+    flex: 1,
+  },
+  chips: {
+    height: 44,
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: GUTTER,
+  },
+  chip: {
+    flex: 1,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plot: {
+    marginHorizontal: GUTTER,
+    position: 'relative',
+  },
+  readout: {
+    height: 40,
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: GUTTER,
+  },
+  readoutItem: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+});
