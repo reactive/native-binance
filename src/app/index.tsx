@@ -12,6 +12,28 @@ import type { MarketSort } from '@/resources/Markets';
 import { getExchangeInfo } from '@/resources/Symbol';
 import { getWatching } from '@/resources/Watching';
 
+function exchangeInfoReady(controller: ReturnType<typeof useController>): boolean {
+  const state = controller.getState();
+  const { data } = controller.getResponse(getExchangeInfo, state);
+  const symbols =
+    data && typeof data === 'object' && 'symbols' in data
+      ? ((data as { symbols?: unknown[] }).symbols?.length ?? 0)
+      : 0;
+  return symbols > 0 || Boolean(controller.getError(getExchangeInfo, state));
+}
+
+/** The first `/exchangeInfo` read has produced a resource-timing entry. */
+function exchangeInfoReadFinished(): boolean {
+  const timing = globalThis.performance;
+  if (typeof timing?.getEntriesByType !== 'function') return false;
+  return timing.getEntriesByType('resource').some(
+    entry =>
+      entry.name.includes('/exchangeInfo') &&
+      'responseEnd' in entry &&
+      (entry as { responseEnd: number }).responseEnd > 0,
+  );
+}
+
 function Markets(): JSX.Element {
   useSuspense(getExchangeInfo);
   const watchList = useSuspense(getWatching);
@@ -92,23 +114,38 @@ export default function HomeScreen(): JSX.Element {
     // The symbol route is its own bundle. Load it while this screen is online
     // so opening a market still works after the network drops.
     void import('./symbol/[symbol]');
-    // A fetch that rejects before DataProvider commits never reaches the reducer,
-    // and NetworkManager keeps that promise, so a later fetch does not run.
+    // A read that fails before DataProvider commits never reaches the store, and
+    // NetworkManager keeps the promise, so the boundary stays on the skeleton.
+    // Only replace that read after its HTTP request has finished. An empty cache
+    // before then is a slow first load, and a second failure must not cover it.
+    let cancelled = false;
+    let grace: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
-      const current = controllerRef.current;
-      const state = current.getState();
-      const { data } = current.getResponse(getExchangeInfo, state);
-      const symbols =
-        data && typeof data === 'object' && 'symbols' in data
-          ? ((data as { symbols?: unknown[] }).symbols?.length ?? 0)
-          : 0;
-      if (symbols > 0 || current.getError(getExchangeInfo, state)) return;
-      void Promise.resolve(getExchangeInfo()).then(
-        response => current.setResponse(getExchangeInfo, response),
-        (err: Error) => current.setError(getExchangeInfo, err),
-      );
+      if (cancelled || exchangeInfoReady(controllerRef.current) || !exchangeInfoReadFinished()) {
+        return;
+      }
+      grace = setTimeout(() => {
+        const current = controllerRef.current;
+        if (cancelled || exchangeInfoReady(current)) return;
+        void Promise.resolve(getExchangeInfo()).then(
+          response => {
+            if (!cancelled && !exchangeInfoReady(current)) {
+              current.setResponse(getExchangeInfo, response);
+            }
+          },
+          (err: Error) => {
+            if (!cancelled && !exchangeInfoReady(current)) {
+              current.setError(getExchangeInfo, err);
+            }
+          },
+        );
+      }, 50);
     }, 1200);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      clearTimeout(grace);
+    };
   }, []);
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
