@@ -1,7 +1,7 @@
-import { AsyncBoundary, useLive, useQuery, useSuspense } from '@data-client/react';
+import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Badge, Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { router } from 'expo-router';
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,6 +14,7 @@ import type { CandleInterval } from '@/resources/Candle';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 import { getTickers, Ticker } from '@/resources/Ticker';
+import { getWatching, setWatched } from '@/resources/Watching';
 
 const TOP_BAR = 48;
 const STRIP = 64;
@@ -45,6 +46,65 @@ function PairTitle({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
+function WatchFallback(): JSX.Element {
+  return (
+    <Pressable
+      testID="watch"
+      accessibilityRole="button"
+      accessibilityLabel="Watch"
+      accessibilityState={{ disabled: true }}
+      disabled
+      style={styles.hit}
+    >
+      <Text role="headingSm">☆</Text>
+    </Pressable>
+  );
+}
+
+function WatchToggle({ symbol }: { symbol: string }): JSX.Element {
+  const list = useSuspense(getWatching);
+  const instrument = useQuery(MarketSymbol, { symbol });
+  const controller = useController();
+  const known = instrument != null;
+  const watched = list.some(item => item.symbol === symbol);
+
+  function onPress() {
+    controller.fetch(setWatched, { symbol, watched: !watched }).catch(error => {
+      console.warn(error);
+    });
+  }
+
+  return (
+    <Pressable
+      testID="watch"
+      accessibilityRole="button"
+      accessibilityLabel={watched ? 'Stop watching' : 'Watch'}
+      accessibilityState={{ selected: watched, disabled: !known }}
+      disabled={!known}
+      onPress={onPress}
+      style={styles.hit}
+    >
+      <Text role="headingSm">{watched ? '★' : '☆'}</Text>
+    </Pressable>
+  );
+}
+
+function WatchControl({ symbol }: { symbol: string }): JSX.Element {
+  const [mounted, setMounted] = useState(false);
+  // The lazy route's first render is still inside the route promise. A fetch that
+  // settles there updates the store before the provider has mounted, and the star
+  // stays on this fallback. Wait until this screen has committed.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return <WatchFallback />;
+  return (
+    <AsyncBoundary fallback={<WatchFallback />}>
+      <WatchToggle symbol={symbol} />
+    </AsyncBoundary>
+  );
+}
+
 function TopBar({ symbol }: { symbol: string }): JSX.Element {
   return (
     <View style={styles.topBar}>
@@ -68,14 +128,7 @@ function TopBar({ symbol }: { symbol: string }): JSX.Element {
           <PairTitle symbol={symbol} />
         </AsyncBoundary>
       </View>
-      <Pressable
-        testID="watch"
-        accessibilityRole="button"
-        accessibilityLabel="Watch"
-        style={styles.hit}
-      >
-        <Text role="headingSm">☆</Text>
-      </Pressable>
+      <WatchControl symbol={symbol} />
     </View>
   );
 }

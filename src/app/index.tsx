@@ -6,9 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MARKET_ROW_HEIGHT } from '@/components/MarketRow';
 import { MarketList, MarketsChrome } from '@/components/MarketsScreen';
+import type { MarketSort } from '@/resources/Markets';
 import { getExchangeInfo } from '@/resources/Symbol';
 import { getTickers } from '@/resources/Ticker';
-import type { MarketSort } from '@/resources/Markets';
+import { getWatching } from '@/resources/Watching';
 
 function TickerFeed(): null {
   useLive(getTickers);
@@ -17,9 +18,13 @@ function TickerFeed(): null {
 
 function Markets(): JSX.Element {
   useSuspense(getExchangeInfo);
+  const watchList = useSuspense(getWatching);
   const [quote, setQuote] = useState('USDT');
   const [sort, setSort] = useState<MarketSort>('volume');
   const [query, setQuery] = useState('');
+  const [watching, setWatching] = useState(false);
+  if (watching && watchList.length === 0) setWatching(false);
+  const watchKey = watching ? watchList.map(item => item.symbol).join(',') : '';
 
   return (
     <View style={styles.body}>
@@ -30,11 +35,17 @@ function Markets(): JSX.Element {
         quote={quote}
         sort={sort}
         query={query}
-        onQuote={setQuote}
+        watching={watching}
+        showWatching={watchList.length > 0}
+        onQuote={next => {
+          setWatching(false);
+          setQuote(next);
+        }}
+        onWatching={() => setWatching(true)}
         onSort={setSort}
         onQuery={setQuery}
       />
-      <MarketList quote={quote} sort={sort} query={query} />
+      <MarketList quote={quote} sort={sort} query={query} watching={watching} watchKey={watchKey} />
     </View>
   );
 }

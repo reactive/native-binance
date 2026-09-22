@@ -2,6 +2,7 @@ import { All, Query } from '@data-client/rest';
 
 import { MarketSymbol } from './Symbol';
 import { Ticker } from './Ticker';
+import { WatchList } from './Watching';
 
 export type MarketSort = 'volume' | 'change' | 'name';
 
@@ -10,6 +11,8 @@ export type MarketArgs = {
   /** Case-insensitive match against base, quote, or the concatenated symbol. */
   q?: string;
   sort?: MarketSort;
+  /** When true, list the device watch set. Any other value keeps the trading list. */
+  watching?: boolean;
 };
 
 function readArgs(arg: MarketArgs | undefined): { quote: string; sort: MarketSort; q: string } {
@@ -44,6 +47,23 @@ function compareMarket(a: MarketSymbol, b: MarketSymbol, sort: MarketSort): numb
   return volumeOf(b.ticker) - volumeOf(a.ticker);
 }
 
+function watched(
+  symbols: readonly MarketSymbol[],
+  watching: readonly { symbol: string }[],
+  arg: MarketArgs | undefined,
+): MarketSymbol[] {
+  const { sort, q } = readArgs(arg);
+  const ids = new Set<string>();
+  for (const item of watching) ids.add(item.symbol);
+  const rows: MarketSymbol[] = [];
+  for (const symbol of symbols) {
+    if (!ids.has(symbol.symbol) || !matchesQuery(symbol, q)) continue;
+    rows.push(symbol);
+  }
+  rows.sort((a, b) => compareMarket(a, b, sort));
+  return rows;
+}
+
 function trading(symbols: readonly MarketSymbol[], arg: MarketArgs | undefined): MarketSymbol[] {
   const { quote, sort, q } = readArgs(arg);
   const rows: MarketSymbol[] = [];
@@ -58,6 +78,12 @@ function trading(symbols: readonly MarketSymbol[], arg: MarketArgs | undefined):
 }
 
 /** Names paint from `All(MarketSymbol)` while `ticker` is still undefined. */
-export const getMarkets = new Query(new All(MarketSymbol), (symbols: MarketSymbol[], arg?: MarketArgs) =>
-  trading(symbols, arg),
+export const getMarkets = new Query(
+  { symbols: new All(MarketSymbol), watching: WatchList },
+  (
+    { symbols, watching }: { symbols: MarketSymbol[]; watching?: readonly { symbol: string }[] },
+    arg?: MarketArgs,
+  ) =>
+    // Branch on the flag. Once the collection is loaded, `watching` is a list for every args object.
+    arg?.watching === true ? watched(symbols, watching ?? [], arg) : trading(symbols, arg),
 );
