@@ -29,28 +29,6 @@ export function formatClock(ms: number): string {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
-/** Decimal places of the value itself, trailing zeros trimmed, capped at 8. */
-function ownPlaces(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  const text = String(Number(Math.abs(value).toPrecision(12)));
-  const dot = text.indexOf('.');
-  if (dot === -1) return 0;
-  const exp = text.indexOf('e-');
-  if (exp !== -1) return Math.min(8, Number(text.slice(exp + 2)));
-  return Math.min(8, text.length - dot - 1);
-}
-
-/**
- * Price or size. A step locks the places. An empty step means the instrument
- * has not loaded, so the value's own decimals are used.
- */
-export function formatAmount(value: number, step: string): string {
-  if (step) return formatLast(value, step);
-  const places = ownPlaces(value);
-  if (places === 0) return formatLast(value, '1');
-  return formatLast(value, `0.${'0'.repeat(places - 1)}1`);
-}
-
 export function formatPercent(fraction: number): string {
   const pct = fraction * 100;
   const sign = pct > 0 ? '+' : '';
