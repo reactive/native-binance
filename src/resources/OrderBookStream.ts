@@ -92,7 +92,12 @@ export default class OrderBookStream implements Manager {
           const raw = (action as { response?: { lastUpdateId?: unknown } }).response
             ?.lastUpdateId;
           const id = Number(raw);
-          if (Number.isFinite(id)) this.heads.set(symbol, id);
+          if (Number.isFinite(id)) {
+            // shouldUpdate keeps the live book when this snapshot is older.
+            const tracked = this.heads.get(symbol) ?? 0;
+            const stored = this.book(symbol)?.lastUpdateId ?? 0;
+            this.heads.set(symbol, Math.max(id, tracked, stored));
+          }
           this.enqueue(symbol, () => this.flush(symbol));
         }
         return;

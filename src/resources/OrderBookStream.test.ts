@@ -158,6 +158,39 @@ afterEach(() => {
   FakeSocket.instances = [];
 });
 
+it('does not rewind the cursor when a stale depth snapshot is ignored', async () => {
+  const { result, frame, stream, fetches, controller } = await mount(100);
+  try {
+    await frame(diff(101, 105, [['100', '2']]));
+    expect(result.current.lastUpdateId).toBe(105);
+
+    void controller.resolve(getOrderBook, {
+      args: [{ symbol: 'BTCUSDT' }],
+      response: {
+        lastUpdateId: 102,
+        bids: [['1', '9']],
+        asks: [['2', '9']],
+      },
+      fetchedAt: 1,
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.lastUpdateId).toBe(105);
+    expect(result.current.bids).toEqual([[100, 2]]);
+    expect(fetches()).toBe(0);
+
+    await frame(diff(106, 108, [['100', '5']]));
+    expect(fetches()).toBe(0);
+    expect(result.current.lastUpdateId).toBe(108);
+    expect(result.current.bids).toEqual([[100, 5]]);
+  } finally {
+    stream.cleanup();
+  }
+});
+
 it('applies a diff that continues the snapshot', async () => {
   const { result, frame, stream } = await mount(100);
   try {
