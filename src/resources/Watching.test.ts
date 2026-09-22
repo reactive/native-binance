@@ -1,7 +1,10 @@
-import { useSuspense } from '@data-client/react';
+import { useQuery, useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 import { act } from 'react';
 
+import { getMarkets } from './Markets';
+import { getExchangeInfo } from './Symbol';
+import { getTickers } from './Ticker';
 import { getWatching, setWatched, WatchedSymbol } from './Watching';
 import { readWatched } from './watchStorage';
 
@@ -40,6 +43,53 @@ beforeEach(() => {
 afterEach(() => {
   delete (globalThis as { localStorage?: Storage }).localStorage;
 });
+
+const btcFilters = [
+  { filterType: 'PRICE_FILTER', tickSize: '0.01000000', minPrice: '0.01' },
+  { filterType: 'LOT_SIZE', stepSize: '0.00001000', minQty: '0.00001' },
+  { filterType: 'NOTIONAL', minNotional: '5.00000000' },
+];
+
+function symbol(name: string, base: string, quote: string, status = 'TRADING') {
+  return { symbol: name, status, baseAsset: base, quoteAsset: quote, filters: btcFilters };
+}
+
+function ticker(name: string, last: string, open: string, quoteVolume: string) {
+  return {
+    symbol: name,
+    lastPrice: last,
+    openPrice: open,
+    highPrice: last,
+    lowPrice: open,
+    volume: '1',
+    quoteVolume,
+    closeTime: 1_000,
+  };
+}
+
+const exchange = {
+  symbols: [
+    symbol('BTCUSDT', 'BTC', 'USDT'),
+    symbol('ETHUSDT', 'ETH', 'USDT'),
+    symbol('ADAUSDT', 'ADA', 'USDT'),
+    symbol('ETHBTC', 'ETH', 'BTC'),
+    symbol('BNBBTC', 'BNB', 'BTC', 'BREAK'),
+    symbol('SOLUSDT', 'SOL', 'USDT', 'HALT'),
+  ],
+};
+
+const tickers = [
+  ticker('BTCUSDT', '101', '100', '50'),
+  ticker('ETHUSDT', '110', '100', '20'),
+  ticker('ADAUSDT', '90', '100', '5'),
+  ticker('ETHBTC', '0.05', '0.04', '3'),
+  ticker('SOLUSDT', '9', '10', '999'),
+];
+
+const fixtures = [
+  { endpoint: getExchangeInfo, args: [], response: exchange },
+  { endpoint: getTickers, args: [], response: tickers },
+];
 
 function ids(rows: { symbol: string }[] | undefined) {
   return rows?.map(row => row.symbol);
@@ -88,23 +138,31 @@ it('rehydrates one WatchedSymbol from storage', async () => {
   expect(result.current[0]?.symbol).toBe('ETHUSDT');
 });
 
-it('keeps storage and the collection in agreement, without duplicate ids', async () => {
+it('keeps storage and the watching query in agreement, without duplicate ids', async () => {
   seed(['ETHUSDT']);
-  const { result, controller } = renderDataHook(() => useSuspense(getWatching));
+  const { result, controller } = renderDataHook(() => {
+    const list = useSuspense(getWatching);
+    const rows = useQuery(getMarkets, { watching: true, quote: 'BTC', sort: 'name' as const });
+    return { list, rows };
+  }, { initialFixtures: fixtures });
   await paint();
-  expect(ids(result.current)).toEqual(['ETHUSDT']);
+
+  expect(ids(result.current.list)).toEqual(['ETHUSDT']);
+  expect(ids(result.current.rows)).toEqual(['ETHUSDT']);
 
   await fetchWatched(controller, 'BTCUSDT', true);
   expect(readWatched()).toEqual(['ETHUSDT', 'BTCUSDT']);
-  expect(ids(result.current)).toEqual(['ETHUSDT', 'BTCUSDT']);
+  expect(ids(result.current.rows)).toEqual(['BTCUSDT', 'ETHUSDT']);
 
   await fetchWatched(controller, 'BTCUSDT', true);
   expect(readWatched()).toEqual(['ETHUSDT', 'BTCUSDT']);
-  expect(ids(result.current)).toEqual(['ETHUSDT', 'BTCUSDT']);
+  expect(ids(result.current.rows)).toEqual(['BTCUSDT', 'ETHUSDT']);
+  expect(new Set(readWatched()).size).toBe(readWatched().length);
 
   await fetchWatched(controller, 'ETHUSDT', false);
   expect(readWatched()).toEqual(['BTCUSDT']);
-  expect(ids(result.current)).toEqual(['BTCUSDT']);
+  expect(ids(result.current.list)).toEqual(['BTCUSDT']);
+  expect(ids(result.current.rows)).toEqual(['BTCUSDT']);
 });
 
 it('applies true then false issued without awaiting between them', async () => {
@@ -151,4 +209,28 @@ it('reads the list back from storage in a fresh store', async () => {
   await paint();
   expect(ids(second.result.current)).toEqual(['ETHUSDT']);
   expect(second.result.current[0]).toBeInstanceOf(WatchedSymbol);
+});
+
+it('lists watched symbols of any quote and status, and ignores quote', async () => {
+  seed(['ETHBTC', 'BNBBTC', 'GONEUSDT', 'SOLUSDT', 'ETHUSDT']);
+  const { result } = renderDataHook(
+    () => ({
+      volume: useQuery(getMarkets, { watching: true, quote: 'USDT', sort: 'volume' as const }),
+      name: useQuery(getMarkets, { watching: true, quote: 'BTC', sort: 'name' as const }),
+      eth: useQuery(getMarkets, { watching: true, quote: 'USDT', sort: 'volume' as const, q: 'eth' }),
+      plain: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const }),
+      list: useSuspense(getWatching),
+    }),
+    { initialFixtures: fixtures },
+  );
+  await paint();
+
+  expect(ids(result.current.list)).toEqual(['ETHBTC', 'BNBBTC', 'GONEUSDT', 'SOLUSDT', 'ETHUSDT']);
+  expect(ids(result.current.volume)).toEqual(['SOLUSDT', 'ETHUSDT', 'ETHBTC', 'BNBBTC']);
+  expect(result.current.volume?.find(row => row.symbol === 'BNBBTC')?.status).toBe('BREAK');
+  expect(result.current.volume?.find(row => row.symbol === 'SOLUSDT')?.status).toBe('HALT');
+  expect(ids(result.current.volume)).not.toContain('GONEUSDT');
+  expect(ids(result.current.name)).toEqual(['BNBBTC', 'ETHBTC', 'ETHUSDT', 'SOLUSDT']);
+  expect(ids(result.current.eth)).toEqual(['ETHUSDT', 'ETHBTC']);
+  expect(ids(result.current.plain)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
 });
