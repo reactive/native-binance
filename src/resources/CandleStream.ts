@@ -110,14 +110,15 @@ export default class CandleStream implements Manager {
     socket?.close();
   }
 
-  private bump(key: string) {
-    this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
+  private bump(key: string): number {
+    const gen = (this.generation.get(key) ?? 0) + 1;
+    this.generation.set(key, gen);
+    return gen;
   }
 
   private connect(symbol: string, interval: CandleInterval) {
     const key = streamKey(symbol, interval);
-    const gen = (this.generation.get(key) ?? 0) + 1;
-    this.generation.set(key, gen);
+    const gen = this.bump(key);
     const socket = new WebSocket(streamUrl(symbol, interval));
     this.sockets.set(key, socket);
     socket.onmessage = event => {

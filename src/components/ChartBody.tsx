@@ -11,7 +11,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { candleLayout, candleMetrics, plotDeviceShift, plotSize } from '@/components/candleLayout';
+import {
+  candleLayout,
+  candleMetrics,
+  INTERVAL_ROW,
+  PLOT_MARGIN,
+  plotDeviceShift,
+  plotSize,
+  READOUT,
+} from '@/components/candleLayout';
 import { formatLast } from '@/components/formatMarket';
 import {
   getCandles,
@@ -22,7 +30,6 @@ import {
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
-const GUTTER = 12;
 
 function intervalLabel(interval: CandleInterval): string {
   return INTERVALS.find(item => item.value === interval)?.label ?? interval;
@@ -291,29 +298,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   chips: {
-    height: 44,
+    height: INTERVAL_ROW,
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: PLOT_MARGIN,
   },
   chip: {
     flex: 1,
-    height: 44,
+    height: INTERVAL_ROW,
     alignItems: 'center',
     justifyContent: 'center',
   },
   plot: {
-    marginHorizontal: GUTTER,
+    marginHorizontal: PLOT_MARGIN,
     position: 'relative',
     overflow: 'hidden',
   },
   readout: {
-    height: 40,
+    height: READOUT,
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: PLOT_MARGIN,
   },
   readoutItem: {
     flex: 1,

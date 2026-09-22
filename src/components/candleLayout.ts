@@ -1,12 +1,12 @@
 import { CANDLE_LIMIT } from '@/resources/Candle';
 
 const CHROME = 156;
-const INTERVAL_ROW = 44;
-const READOUT = 40;
-const GUTTER = 24;
-/** Top bar, price strip, segment, and interval chips. Plot screen y is the top inset plus this. */
-const ABOVE_PLOT = 200;
-const PLOT_MARGIN = 12;
+export const INTERVAL_ROW = 44;
+export const READOUT = 40;
+export const PLOT_MARGIN = 12;
+const GUTTER = PLOT_MARGIN * 2;
+/** Top bar, price strip, segment, and interval chips. */
+const ABOVE_PLOT = CHROME + INTERVAL_ROW;
 
 export type CandleDirection = 'up' | 'down' | 'flat';
 
@@ -26,7 +26,6 @@ export type CandleMetrics = {
   body: number;
   wick: number;
   bodyCss: number;
-  wickCss: number;
 };
 
 type CandlePoint = {
@@ -78,7 +77,6 @@ export function candleMetrics(width: number, ratio: number): CandleMetrics {
     body,
     wick: gap,
     bodyCss: body / ratio,
-    wickCss: gap / ratio,
   };
 }
 
