@@ -2,7 +2,7 @@ import { useQuery } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 import { act } from 'react';
 
-import { getMarketNames, getMarkets } from './Markets';
+import { getMarketNames, getMarkets, type MarketQuote } from './Markets';
 import { getExchangeInfo, MarketSymbol } from './Symbol';
 import { getTickers, Ticker } from './Ticker';
 import { readMiniTickers } from './TickerStream';
@@ -65,6 +65,10 @@ const tickers = [
   ticker('BTCUSDC', '101', '100', '80', 1_000),
 ];
 
+function ids(rows: MarketQuote[] | undefined) {
+  return rows?.map(row => row.symbol.symbol);
+}
+
 function useLists() {
   return {
     volume: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const }),
@@ -94,8 +98,6 @@ it('flattens exchange-info filters onto the symbol', () => {
 
 it('lists trading quotes by volume, change, and name', () => {
   const { result } = renderDataHook(() => useLists(), { initialFixtures: fixtures });
-  const ids = (rows: { symbol: { symbol: string } }[] | undefined) =>
-    rows?.map(row => row.symbol.symbol);
 
   expect(ids(result.current.volume)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
   expect(ids(result.current.change)).toEqual(['ETHUSDT', 'BTCUSDT', 'ADAUSDT']);
@@ -167,6 +169,58 @@ it('keeps a newer last price when an older ticker arrives', async () => {
   expect(result.current.btc?.last).toBe(120);
   expect(result.current.btc?.eventTime).toBe(2_000);
   expect(result.current.eth?.last).toBe(110);
+});
+
+it('filters on this phone and keeps a halted symbol out of the default list', () => {
+  const searched = {
+    symbols: [
+      ...exchange.symbols,
+      symbol('ETHFIUSDT', 'ETHFI', 'USDT'),
+      symbol('ETHBTC', 'ETH', 'BTC'),
+      symbol('LUNAUSDT', 'LUNA', 'USDT', 'BREAK'),
+    ],
+  };
+  const searchedTickers = [
+    ...tickers,
+    ticker('ETHFIUSDT', '2', '2', '1', 1_000),
+    ticker('ETHBTC', '0.05', '0.04', '3', 1_000),
+  ];
+  const { result } = renderDataHook(
+    () => ({
+      eth: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const, q: 'eth' }),
+      ethUpper: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const, q: ' ETH ' }),
+      ethName: useQuery(getMarkets, { quote: 'USDT', sort: 'name' as const, q: 'eth' }),
+      ethChange: useQuery(getMarkets, { quote: 'USDT', sort: 'change' as const, q: 'eth' }),
+      symbolMatch: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const, q: 'tcus' }),
+      sol: useQuery(getMarkets, { quote: 'USDT', sort: 'name' as const, q: 'sol' }),
+      luna: useQuery(getMarkets, { quote: 'USDT', q: 'luna' }),
+      none: useQuery(getMarkets, { quote: 'USDT', q: 'zzzz' }),
+      cleared: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const, q: '' }),
+      usdc: useQuery(getMarkets, { quote: 'USDC', sort: 'volume' as const, q: 'eth' }),
+      names: useQuery(getMarketNames, { quote: 'USDT', q: 'sol' }),
+    }),
+    {
+      initialFixtures: [
+        { endpoint: getExchangeInfo, args: [], response: searched },
+        { endpoint: getTickers, args: [], response: searchedTickers },
+      ],
+    },
+  );
+
+  expect(ids(result.current.eth)).toEqual(['ETHUSDT', 'ETHFIUSDT']);
+  expect(ids(result.current.ethUpper)).toEqual(['ETHUSDT', 'ETHFIUSDT']);
+  expect(ids(result.current.ethName)).toEqual(['ETHUSDT', 'ETHFIUSDT']);
+  expect(ids(result.current.ethChange)).toEqual(['ETHUSDT', 'ETHFIUSDT']);
+  expect(ids(result.current.symbolMatch)).toEqual(['BTCUSDT']);
+  expect(ids(result.current.sol)).toEqual(['SOLUSDT']);
+  expect(result.current.sol?.[0]?.symbol.status).toBe('HALT');
+  expect(result.current.luna?.[0]?.symbol.status).toBe('BREAK');
+  expect(ids(result.current.none)).toEqual([]);
+  expect(ids(result.current.cleared)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'ETHFIUSDT']);
+  expect(ids(result.current.cleared)).not.toContain('SOLUSDT');
+  expect(ids(result.current.cleared)).not.toContain('LUNAUSDT');
+  expect(ids(result.current.usdc)).toEqual([]);
+  expect(ids(result.current.names)).toEqual(['SOLUSDT']);
 });
 
 it('reads a mini-ticker array', () => {

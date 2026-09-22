@@ -7,6 +7,8 @@ export type MarketSort = 'volume' | 'change' | 'name';
 
 export type MarketArgs = {
   quote?: string;
+  /** Case-insensitive match against base, quote, or the concatenated symbol. */
+  q?: string;
   sort?: MarketSort;
 };
 
@@ -20,11 +22,18 @@ const schema = {
   tickers: new All(Ticker),
 };
 
-function readArgs(arg: MarketArgs | undefined): { quote: string; sort: MarketSort } {
+function readArgs(arg: MarketArgs | undefined): { quote: string; sort: MarketSort; q: string } {
   return {
     quote: arg?.quote ?? 'USDT',
     sort: arg?.sort ?? 'volume',
+    q: arg?.q?.trim().toLowerCase() ?? '',
   };
+}
+
+function matchesQuery(symbol: MarketSymbol, q: string): boolean {
+  if (!q) return true;
+  // The id is base + quote, so one includes covers base, quote, and the pair.
+  return symbol.symbol.toLowerCase().includes(q);
 }
 
 function changeOf(ticker: Ticker | undefined): number {
@@ -50,12 +59,14 @@ function trading(
   tickers: readonly Ticker[],
   arg: MarketArgs | undefined,
 ): MarketQuote[] {
-  const { quote, sort } = readArgs(arg);
+  const { quote, sort, q } = readArgs(arg);
   const byMarketSymbol = new Map<string, Ticker>();
   for (const ticker of tickers) byMarketSymbol.set(ticker.symbol, ticker);
   const rows: MarketQuote[] = [];
   for (const symbol of symbols) {
-    if (symbol.status !== 'TRADING' || symbol.quoteAsset !== quote) continue;
+    if (symbol.quoteAsset !== quote || !matchesQuery(symbol, q)) continue;
+    // Halted and paused symbols stay out of the default list. A search that hits one includes it.
+    if (!q && symbol.status !== 'TRADING') continue;
     rows.push({ symbol, ticker: byMarketSymbol.get(symbol.symbol) });
   }
   rows.sort((a, b) => compareMarket(a, b, sort));
@@ -70,5 +81,5 @@ export const getMarkets = new Query(
 );
 
 export const getMarketNames = new Query(new All(MarketSymbol), (symbols: MarketSymbol[], arg?: MarketArgs) =>
-  trading(symbols, [], { quote: arg?.quote }),
+  trading(symbols, [], arg),
 );

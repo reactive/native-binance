@@ -1,5 +1,5 @@
 import { useQuery } from '@data-client/react';
-import { Skeleton, Text, useTheme } from '@reactive/silk-native';
+import { Badge, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { memo, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 
@@ -35,16 +35,19 @@ export const MarketRow = memo(function MarketRow({
 
   const price = ticker ? formatLast(ticker.last, instrument.tickSize) : '';
   const percent = ticker ? formatPercent(ticker.percent) : '';
+  const halted = instrument.status !== 'TRADING';
   const direction = !ticker ? 0 : ticker.percent > 0 ? 1 : ticker.percent < 0 ? -1 : 0;
+  const pair = `${instrument.baseAsset} ${instrument.quoteAsset}`;
 
   return (
     <Pressable
       testID={`market-${symbol}`}
       accessibilityRole="button"
       accessibilityLabel={
-        ticker
-          ? `${instrument.baseAsset} ${instrument.quoteAsset}, ${price}, ${percent}`
-          : `${instrument.baseAsset} ${instrument.quoteAsset}, price loading`
+        halted ?
+          `${pair}, ${ticker ? price : 'price loading'}, ${instrument.status}`
+        : ticker ? `${pair}, ${price}, ${percent}`
+        : `${pair}, price loading`
       }
       onPress={() => onPress(symbol)}
       style={[styles.row, { borderBottomColor: color.borderSubtle }]}
@@ -57,23 +60,23 @@ export const MarketRow = memo(function MarketRow({
       </View>
       <View style={styles.price}>
         {ticker ?
-          <>
-            <Text role="label" style={TABULAR}>
-              {price}
-            </Text>
-            <Text
-              role="caption"
-              tone={direction === 0 ? 'secondary' : undefined}
-              style={[TABULAR, direction > 0 ? { color: up } : direction < 0 ? { color: down } : null]}
-            >
-              {percent}
-            </Text>
-          </>
-        : <>
-            <Skeleton style={styles.priceSkeleton} />
-            <Skeleton style={styles.percentSkeleton} />
-          </>
-        }
+          <Text role="label" style={TABULAR}>
+            {price}
+          </Text>
+        : <Skeleton style={styles.priceSkeleton} />}
+        {halted ?
+          <Badge size="sm" tone="neutral" testID={`status-${symbol}`} style={styles.badge}>
+            {instrument.status}
+          </Badge>
+        : ticker ?
+          <Text
+            role="caption"
+            tone={direction === 0 ? 'secondary' : undefined}
+            style={[TABULAR, direction > 0 ? { color: up } : direction < 0 ? { color: down } : null]}
+          >
+            {percent}
+          </Text>
+        : <Skeleton style={styles.percentSkeleton} />}
       </View>
     </Pressable>
   );
@@ -102,5 +105,9 @@ const styles = StyleSheet.create({
     width: 56,
     height: 12,
     marginTop: 4,
+  },
+  badge: {
+    alignSelf: 'flex-end',
+    marginTop: 2,
   },
 });
