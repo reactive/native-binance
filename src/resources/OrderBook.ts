@@ -1,8 +1,9 @@
 import { Entity, RestEndpoint } from '@data-client/rest';
 
+import { BINANCE_REST, binanceGetInit } from './hosts';
+
 export type Level = [price: number, qty: number];
 
-const BINANCE_REST = 'https://data-api.binance.vision/api/v3';
 const BOOK_LIMIT = 100;
 
 function parseLevels(levels: unknown): Level[] {
@@ -156,10 +157,7 @@ export const getOrderBook = new RestEndpoint({
   path: '/depth',
   searchParams: {} as { symbol: string },
   schema: OrderBook,
-  /** Binance rejects CORS preflight when GET sends Content-Type. */
-  getRequestInit(this: { signal?: AbortSignal }) {
-    return { method: 'GET' as const, signal: this.signal, cache: 'no-store' };
-  },
+  getRequestInit: binanceGetInit,
   searchToString(searchParams: Record<string, unknown>) {
     return new URLSearchParams({
       symbol: String(searchParams.symbol ?? ''),
