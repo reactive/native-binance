@@ -58,8 +58,8 @@ it('writes symbols from a batch that arrived while the previous write was in fli
     send() {}
   }
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
+  const stream = new TickerStream();
   try {
-    const stream = new TickerStream();
     const next = stream.middleware(controller as unknown as Controller);
     await next(() => Promise.resolve())({
       type: actionTypes.SUBSCRIBE,
@@ -75,6 +75,7 @@ it('writes symbols from a batch that arrived while the previous write was in fli
     });
     expect(written).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
   } finally {
+    stream.cleanup();
     globalThis.WebSocket = Original;
   }
 });
