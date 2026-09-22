@@ -6,11 +6,13 @@ import { useColorScheme } from 'react-native';
 import CandleStream from '@/resources/CandleStream';
 import OrderBookStream from '@/resources/OrderBookStream';
 import TickerStream from '@/resources/TickerStream';
+import TradeStream from '@/resources/TradeStream';
 
 const managers = [
   new OrderBookStream(),
   new TickerStream(),
   new CandleStream(),
+  new TradeStream(),
   ...getDefaultManagers(),
 ];
 
