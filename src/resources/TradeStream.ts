@@ -44,8 +44,8 @@ function scheduleFrame(run: () => void) {
 
 /**
  * Keeps the `Trade` tape current from `<symbol>@aggTrade`.
- * Writes wait until the in-flight `getTrades` snapshot has landed, because an
- * older snapshot would otherwise be discarded by the stream's later `set`.
+ * Writes wait until the in-flight `getTrades` snapshot has landed. A refetch
+ * also replays prints already on the tape, so the snapshot cannot drop them.
  */
 export default class TradeStream implements Manager {
   protected controller: Controller = new Controller();
@@ -86,6 +86,7 @@ export default class TradeStream implements Manager {
       if (action.type === actionTypes.FETCH && action.endpoint === getTrades) {
         const symbol = symbolFrom(action.args);
         if (symbol) {
+          this.holdMerged(symbol);
           this.syncing.add(symbol);
           this.ready.delete(symbol);
         }
@@ -192,6 +193,33 @@ export default class TradeStream implements Manager {
       this.connect(symbol);
     }, delay);
     this.timers.set(symbol, timer);
+  }
+
+  /** Prints already merged keep their old `fetchedAt`, so a refetch would drop them. */
+  private holdMerged(symbol: string) {
+    const buffer = this.pending.get(symbol);
+    if (!buffer) return;
+    const live = this.controller.get(getTrades.schema, { symbol }, this.controller.getState());
+    if (!Array.isArray(live) || live.length === 0) return;
+    const seen = new Set(buffer.map(row => Number(row.a)));
+    const older: AggFrame[] = [];
+    for (let i = live.length - 1; i >= 0; i--) {
+      const trade = live[i];
+      if (seen.has(trade.a)) continue;
+      older.push({
+        e: 'aggTrade',
+        s: symbol,
+        a: trade.a,
+        p: trade.p,
+        q: trade.q,
+        T: trade.T,
+        m: trade.m,
+      });
+    }
+    const incoming = buffer.splice(0, buffer.length);
+    const combined = [...older, ...incoming];
+    const start = Math.max(0, combined.length - TAPE_LIMIT);
+    for (let i = start; i < combined.length; i++) buffer.push(combined[i]);
   }
 
   private onMessage(symbol: string, data: unknown) {

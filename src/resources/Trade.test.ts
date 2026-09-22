@@ -1,8 +1,9 @@
-import { useSuspense } from '@data-client/react';
+import { actionTypes, useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 import { act } from 'react';
 
 import { getTrades, newTrades, TAPE_LIMIT } from './Trade';
+import TradeStream from './TradeStream';
 
 function agg(
   a: number,
@@ -147,4 +148,76 @@ it('keeps the stream list when an older snapshot resolves', async () => {
   await resolveTrades(controller, 'BTCUSDT', [agg(1, '1')], 1);
 
   expect(result.current.map(trade => trade.a)).toEqual(afterStream);
+});
+
+it('keeps a print merged before the refetch after the snapshot returns', async () => {
+  const Original = globalThis.WebSocket;
+  class FakeSocket {
+    onmessage: ((event: { data: string }) => void) | null = null;
+    onopen: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onclose: (() => void) | null = null;
+    constructor(_url: string) {}
+    close() {
+      this.onclose?.();
+    }
+    send() {}
+  }
+  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
+
+  const { result, controller } = renderDataHook(
+    () => useSuspense(getTrades, { symbol: 'BTCUSDT' }),
+    { initialFixtures: [snapshot('BTCUSDT', [agg(10, '10'), agg(11, '11')])] },
+  );
+  const stream = new TradeStream();
+  const handle = stream.middleware(controller)(async action => {
+    if (action.type !== actionTypes.SET_RESPONSE || action.endpoint !== getTrades) return;
+    await controller.resolve(getTrades, {
+      args: action.args as [{ symbol: string }],
+      response: action.response,
+      fetchedAt: action.meta.fetchedAt,
+    });
+  });
+
+  try {
+    await act(async () => {
+      await handle({
+        type: actionTypes.SUBSCRIBE,
+        endpoint: getTrades,
+        args: [{ symbol: 'BTCUSDT' }],
+      } as never);
+    });
+    await setTrades(controller, 'BTCUSDT', agg(12, '12'));
+    expect(result.current.map(trade => trade.a)).toEqual([12, 11, 10]);
+
+    const fetchedAt = Date.now() + 60_000;
+    const snapshotRows = [agg(11, '11'), agg(10, '10')];
+    await act(async () => {
+      await handle({
+        type: actionTypes.FETCH,
+        endpoint: getTrades,
+        args: [{ symbol: 'BTCUSDT' }],
+        meta: { fetchedAt },
+      } as never);
+    });
+    let landed: Promise<void> | undefined;
+    act(() => {
+      landed = handle({
+        type: actionTypes.SET_RESPONSE,
+        endpoint: getTrades,
+        args: [{ symbol: 'BTCUSDT' }],
+        response: snapshotRows,
+        meta: { fetchedAt },
+      } as never);
+    });
+    await landed;
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.map(trade => trade.a)).toEqual([12, 11, 10]);
+  } finally {
+    stream.cleanup();
+    globalThis.WebSocket = Original;
+  }
 });

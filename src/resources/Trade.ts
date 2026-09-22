@@ -53,8 +53,25 @@ const tape = new Collection([Trade], {
   argsKey: ({ symbol }: { symbol: string }) => ({ symbol }),
 });
 
+/**
+ * A newer snapshot unions by aggregate id. Default `fetchedAt` ordering would
+ * replace the list and drop stream prints the REST page has not reached.
+ * An older snapshot still loses, so a late response cannot rewind the tape.
+ */
+tape.mergeWithStore = (existingMeta, incomingMeta, existing, incoming) => {
+  if (incomingMeta.fetchedAt < existingMeta.fetchedAt) return existing;
+  return newestFirst(idsOf(existing), idsOf(incoming));
+};
+
 /** Stream writes. `controller.set(newTrades, { symbol }, events)`. */
 export const newTrades = tape.addWith(newestFirst);
+// `addWith` delegates `mergeWithStore` to `tape`. Sets must union even when their stamp is older.
+newTrades.mergeWithStore = (_existingMeta, _incomingMeta, existing, incoming) =>
+  newestFirst(idsOf(existing), idsOf(incoming));
+
+function idsOf(value: unknown): readonly string[] {
+  return Array.isArray(value) ? value : [];
+}
 
 export const getTrades = new RestEndpoint({
   urlPrefix: BINANCE_REST,
