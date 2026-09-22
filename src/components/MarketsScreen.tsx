@@ -69,14 +69,20 @@ export function MarketsChrome({
   quote,
   sort,
   query,
+  watching,
+  showWatching,
   onQuote,
+  onWatching,
   onSort,
   onQuery,
 }: {
   quote: string;
   sort: MarketSort;
   query: string;
+  watching: boolean;
+  showWatching: boolean;
   onQuote: (quote: string) => void;
+  onWatching: () => void;
   onSort: (sort: MarketSort) => void;
   onQuery: (query: string) => void;
 }): JSX.Element {
@@ -109,11 +115,19 @@ export function MarketsChrome({
         style={styles.quotes}
         contentContainerStyle={styles.quotesContent}
       >
+        {showWatching ?
+          <Chip
+            label="Watching"
+            selected={watching}
+            onPress={onWatching}
+            testID="quote-watching"
+          />
+        : null}
         {QUOTES.map(item => (
           <Chip
             key={item}
             label={item}
-            selected={item === quote}
+            selected={!watching && item === quote}
             onPress={() => onQuote(item)}
             testID={`quote-${item}`}
           />
@@ -138,13 +152,18 @@ export function MarketList({
   quote,
   sort,
   query,
+  watching,
+  watchKey,
 }: {
   quote: string;
   sort: MarketSort;
   query: string;
+  watching: boolean;
+  /** Collection order, and only while Watching is selected. Volume sort must not change it. */
+  watchKey: string;
 }): JSX.Element {
   const q = query.trim().toLowerCase();
-  const args = useMemo(() => ({ quote, sort, q }), [quote, sort, q]);
+  const args = useMemo(() => ({ quote, sort, q, watching }), [quote, sort, q, watching]);
   const rows = useQuery(getMarkets, args) ?? [];
   const volumesReady =
     rows.length > 0 && rows.every(row => row.ticker != null || row.status !== 'TRADING');
@@ -153,10 +172,12 @@ export function MarketList({
   liveRef.current = liveIds;
 
   const [hold, dispatch] = useReducer(holdOrder, idleHold);
-  const argsKey = `${quote}:${sort}:${q}`;
-  const argsSeen = useRef(argsKey);
-  if (argsSeen.current !== argsKey) {
-    argsSeen.current = argsKey;
+  const argsKey = `${quote}:${sort}:${q}:${watching}`;
+  // Collection order, not the sorted row ids. A volume reorder must not fire `args`.
+  const membershipKey = `${argsKey}:${watchKey}`;
+  const argsSeen = useRef(membershipKey);
+  if (argsSeen.current !== membershipKey) {
+    argsSeen.current = membershipKey;
     const event: HoldEvent = { type: 'args', ids: liveIds, ready: volumesReady };
     dispatch(event);
   }
