@@ -35,7 +35,7 @@ function readAggTrade(data: unknown): Record<string, unknown> | undefined {
 
 /**
  * Keeps the `Trade` tape current from `<symbol>@aggTrade`.
- * Writes wait until every in-flight `getTrades` snapshot has landed, because an
+ * Writes wait until the in-flight `getTrades` snapshot has landed, because an
  * older snapshot would otherwise be discarded by the stream's later `set`.
  */
 export default class TradeStream implements Manager {
@@ -46,8 +46,12 @@ export default class TradeStream implements Manager {
   private readonly generation = new Map<string, number>();
   private readonly attempts = new Map<string, number>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
-  /** `fetchedAt` of each `getTrades` fetch still in flight for that symbol. */
-  private readonly inflight = new Map<string, Set<number>>();
+  /**
+   * Symbols whose `getTrades` snapshot has not landed.
+   * One `SET_RESPONSE` clears the symbol: NetworkManager throttles a second
+   * fetch of the same key onto the first, so that fetch never gets its own response.
+   */
+  private readonly syncing = new Set<string>();
   private readonly writing = new Set<string>();
 
   middleware: Middleware = controller => {
@@ -68,15 +72,14 @@ export default class TradeStream implements Manager {
 
       if (action.type === actionTypes.FETCH && action.endpoint === getTrades) {
         const symbol = symbolFrom(action.args);
-        if (symbol) this.noteFetch(symbol, action.meta.fetchedAt);
+        if (symbol) this.noteFetch(symbol);
         return next(action);
       }
 
       if (action.type === actionTypes.SET_RESPONSE && action.endpoint === getTrades) {
         const symbol = symbolFrom(action.args);
-        const fetchedAt = action.meta.fetchedAt;
         const result = await next(action);
-        if (symbol) this.noteResponse(symbol, fetchedAt);
+        if (symbol) this.noteResponse(symbol);
         return result;
       }
 
@@ -92,7 +95,7 @@ export default class TradeStream implements Manager {
     this.sockets.clear();
     this.counts.clear();
     this.pending.clear();
-    this.inflight.clear();
+    this.syncing.clear();
     this.writing.clear();
   }
 
@@ -113,7 +116,7 @@ export default class TradeStream implements Manager {
     }
     this.counts.delete(symbol);
     this.pending.delete(symbol);
-    this.inflight.delete(symbol);
+    this.syncing.delete(symbol);
     this.writing.delete(symbol);
     this.disconnect(symbol);
   }
@@ -178,23 +181,17 @@ export default class TradeStream implements Manager {
     this.flush(symbol);
   }
 
-  private noteFetch(symbol: string, fetchedAt: number) {
-    let stamps = this.inflight.get(symbol);
-    if (!stamps) {
-      stamps = new Set();
-      this.inflight.set(symbol, stamps);
-    }
-    stamps.add(fetchedAt);
+  private noteFetch(symbol: string) {
+    this.syncing.add(symbol);
   }
 
-  private noteResponse(symbol: string, fetchedAt: number) {
-    const stamps = this.inflight.get(symbol);
-    if (stamps?.delete(fetchedAt) && stamps.size === 0) this.inflight.delete(symbol);
+  private noteResponse(symbol: string) {
+    this.syncing.delete(symbol);
     this.flush(symbol);
   }
 
   private flush(symbol: string) {
-    if (this.writing.has(symbol) || this.inflight.has(symbol)) return;
+    if (this.writing.has(symbol) || this.syncing.has(symbol)) return;
     const buffer = this.pending.get(symbol);
     if (!buffer?.length) return;
     if (
