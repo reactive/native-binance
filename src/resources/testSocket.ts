@@ -42,6 +42,10 @@ export class FakeSocket {
 
   stall() {}
 
+  get closed(): boolean {
+    return this.readyState === FakeSocket.CLOSED;
+  }
+
   close() {
     if (this.readyState === FakeSocket.CLOSED) return;
     this.readyState = FakeSocket.CLOSED;

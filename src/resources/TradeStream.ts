@@ -1,12 +1,10 @@
 import { actionTypes, Controller } from '@data-client/react';
 import type { Manager, Middleware } from '@data-client/react';
 
-import { BINANCE_STREAM } from './hosts';
+import { LiveSocket } from './LiveSocket';
+import { streamStatus, type StreamStatus } from './streamStatus';
+import { tradeStream } from './streams';
 import { getTrades, newTrades, TAPE_LIMIT } from './Trade';
-
-function streamUrl(symbol: string) {
-  return `${BINANCE_STREAM}/${symbol.toLowerCase()}@aggTrade`;
-}
 
 function symbolFrom(args: readonly unknown[] | undefined): string {
   const arg = args?.[0];
@@ -51,10 +49,7 @@ export default class TradeStream implements Manager {
   protected controller: Controller = new Controller();
   private readonly counts = new Map<string, number>();
   private readonly pending = new Map<string, AggFrame[]>();
-  private readonly sockets = new Map<string, WebSocket>();
-  private readonly generation = new Map<string, number>();
-  private readonly attempts = new Map<string, number>();
-  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly sockets = new Map<string, LiveSocket>();
   /**
    * Symbols whose `getTrades` snapshot has not landed.
    * One `SET_RESPONSE` clears the symbol: NetworkManager throttles a second
@@ -66,6 +61,8 @@ export default class TradeStream implements Manager {
   private readonly scheduled = new Set<string>();
   /** The tape collection has been seen, so later frames skip `controller.get`. */
   private readonly ready = new Set<string>();
+
+  constructor(private readonly status: StreamStatus = streamStatus) {}
 
   middleware: Middleware = controller => {
     this.controller = controller;
@@ -108,9 +105,6 @@ export default class TradeStream implements Manager {
   };
 
   cleanup() {
-    for (const timer of this.timers.values()) clearTimeout(timer);
-    this.timers.clear();
-    for (const symbol of this.sockets.keys()) this.bump(symbol);
     for (const socket of this.sockets.values()) socket.close();
     this.sockets.clear();
     this.counts.clear();
@@ -126,7 +120,6 @@ export default class TradeStream implements Manager {
     this.counts.set(symbol, count);
     if (count > 1) return;
     this.pending.set(symbol, []);
-    this.attempts.set(symbol, 0);
     this.connect(symbol);
   }
 
@@ -146,53 +139,21 @@ export default class TradeStream implements Manager {
   }
 
   private disconnect(symbol: string) {
-    this.bump(symbol);
-    const timer = this.timers.get(symbol);
-    if (timer) clearTimeout(timer);
-    this.timers.delete(symbol);
     const socket = this.sockets.get(symbol);
     this.sockets.delete(symbol);
     socket?.close();
   }
 
-  private bump(symbol: string) {
-    this.generation.set(symbol, (this.generation.get(symbol) ?? 0) + 1);
-  }
-
   private connect(symbol: string) {
-    const gen = (this.generation.get(symbol) ?? 0) + 1;
-    this.generation.set(symbol, gen);
-    const socket = new WebSocket(streamUrl(symbol));
+    const socket = new LiveSocket({
+      url: tradeStream(symbol),
+      status: this.status,
+      onMessage: data => this.onMessage(symbol, data),
+      onOpen: () => {
+        void Promise.resolve(this.controller.fetch(getTrades, { symbol })).catch(() => {});
+      },
+    });
     this.sockets.set(symbol, socket);
-    socket.onmessage = event => {
-      if (this.generation.get(symbol) !== gen) return;
-      this.onMessage(symbol, event.data);
-    };
-    socket.onopen = () => {
-      if (this.generation.get(symbol) !== gen) return;
-      this.attempts.set(symbol, 0);
-      void Promise.resolve(this.controller.fetch(getTrades, { symbol })).catch(() => {});
-    };
-    socket.onerror = () => {
-      socket.close();
-    };
-    socket.onclose = () => {
-      if (this.generation.get(symbol) !== gen) return;
-      if (!this.counts.has(symbol)) return;
-      this.scheduleReconnect(symbol);
-    };
-  }
-
-  private scheduleReconnect(symbol: string) {
-    const attempt = this.attempts.get(symbol) ?? 0;
-    this.attempts.set(symbol, attempt + 1);
-    const delay = Math.min(10_000, 2 ** attempt * 500);
-    const timer = setTimeout(() => {
-      this.timers.delete(symbol);
-      if (!this.counts.has(symbol)) return;
-      this.connect(symbol);
-    }, delay);
-    this.timers.set(symbol, timer);
   }
 
   /** Prints already merged keep their old `fetchedAt`, so a refetch would drop them. */
