@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { hasNewTrades, holdTape, idleTape } from '@/components/holdTape';
+import { usePlaces } from '@/components/places';
 import { TRADE_ROW_HEIGHT, TradeRow, type TradePalette } from '@/components/TradeRow';
 import { getTrades, type Trade } from '@/resources/Trade';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
@@ -44,14 +45,24 @@ export default function TradeTape({ symbol }: TradeTapeProps): JSX.Element {
     [color],
   );
 
-  const tickSize = instrument?.tickSize ?? '';
-  const stepSize = instrument?.stepSize ?? '';
   const liveRef = useRef(trades);
   liveRef.current = trades;
 
   const [hold, dispatch] = useReducer(holdTape, idleTape);
   const shown = (hold.held ?? trades) as Trade[];
   const hasNew = hasNewTrades(hold.held, trades);
+  const priceSample: number[] = [];
+  const sizeSample: number[] = [];
+  const sampleCount = Math.min(shown.length, 16);
+  for (let i = 0; i < sampleCount; i++) {
+    priceSample.push(shown[i].price);
+    sizeSample.push(shown[i].qty);
+  }
+  const places = usePlaces(
+    { price: instrument?.pricePlaces, size: instrument?.sizePlaces },
+    priceSample,
+    sizeSample,
+  );
   const listRef = useRef<FlatList<Trade>>(null);
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -71,13 +82,12 @@ export default function TradeTape({ symbol }: TradeTapeProps): JSX.Element {
     ({ item, index }) => (
       <TradeRow
         trade={item}
-        tickSize={tickSize}
-        stepSize={stepSize}
+        places={places}
         palette={palette}
         testID={index === 0 ? 'latest-trade' : undefined}
       />
     ),
-    [palette, stepSize, tickSize],
+    [palette, places],
   );
 
   return (

@@ -2,7 +2,8 @@ import { Text } from '@reactive/silk-native';
 import { memo, type JSX } from 'react';
 import { StyleSheet, View, type TextStyle } from 'react-native';
 
-import { formatAmount, formatClock } from '@/components/formatMarket';
+import { formatClock, formatPrice, formatSize } from '@/components/formatMarket';
+import type { Places } from '@/components/places';
 import type { Trade } from '@/resources/Trade';
 
 export const TRADE_ROW_HEIGHT = 44;
@@ -18,22 +19,20 @@ export type TradePalette = {
 
 type TradeRowProps = {
   trade: Trade;
-  tickSize: string;
-  stepSize: string;
+  places: Places;
   palette: TradePalette;
   testID?: string;
 };
 
 export const TradeRow = memo(function TradeRow({
   trade,
-  tickSize,
-  stepSize,
+  places,
   palette,
   testID,
 }: TradeRowProps): JSX.Element {
   const timeText = formatClock(trade.time);
-  const priceText = formatAmount(trade.price, tickSize);
-  const sizeText = formatAmount(trade.qty, stepSize);
+  const priceText = formatPrice(trade.price, places.price);
+  const sizeText = formatSize(trade.qty, places.size);
   const buy = trade.takerBuy;
   return (
     <View
