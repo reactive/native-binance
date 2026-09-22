@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LoadError } from '@/components/LoadError';
 import {
   candleLayout,
   candleMetrics,
@@ -261,10 +262,14 @@ export default function ChartBody({
   symbol,
   interval,
   onInterval,
+  onRetry,
+  retry,
 }: {
   symbol: string;
   interval: CandleInterval;
   onInterval: (interval: CandleInterval) => void;
+  onRetry: () => void;
+  retry: number;
 }): JSX.Element {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -274,11 +279,13 @@ export default function ChartBody({
     <View style={styles.body}>
       <IntervalChips value={interval} onSelect={onInterval} />
       <AsyncBoundary
+        key={retry}
         fallback={
           <Text tone="secondary" testID="chart-loading">
             Loading {symbol}
           </Text>
         }
+        errorComponent={() => <LoadError what={`${symbol} candles`} onRetry={onRetry} />}
       >
         <LiveCandles
           symbol={symbol}

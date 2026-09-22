@@ -4,47 +4,10 @@ import { act } from 'react';
 
 import { getTrades, newTrades } from './Trade';
 import TradeStream from './TradeStream';
+import { installFakeSocket } from './testSocket';
 
 const BTC_URL = 'wss://data-stream.binance.vision/ws/btcusdt@aggTrade';
 const ETH_URL = 'wss://data-stream.binance.vision/ws/ethusdt@aggTrade';
-
-type FakeSocket = {
-  url: string;
-  onmessage: ((event: { data: string }) => void) | null;
-  onopen: (() => void) | null;
-  onerror: (() => void) | null;
-  onclose: (() => void) | null;
-  closed: boolean;
-};
-
-function installSockets() {
-  const sockets: FakeSocket[] = [];
-  const Original = globalThis.WebSocket;
-  class Fake {
-    url: string;
-    onmessage: ((event: { data: string }) => void) | null = null;
-    onopen: (() => void) | null = null;
-    onerror: (() => void) | null = null;
-    onclose: (() => void) | null = null;
-    closed = false;
-    constructor(url: string) {
-      this.url = url;
-      sockets.push(this);
-    }
-    close() {
-      this.closed = true;
-      this.onclose?.();
-    }
-    send() {}
-  }
-  globalThis.WebSocket = Fake as unknown as typeof WebSocket;
-  return {
-    sockets,
-    restore() {
-      globalThis.WebSocket = Original;
-    },
-  };
-}
 
 function frame(a: number, symbol = 'BTCUSDT', event = 'aggTrade') {
   return { e: event, E: a, s: symbol, a, p: '1', q: '1', T: a, m: a % 2 === 0 };
@@ -79,7 +42,7 @@ function harness() {
       return Promise.resolve();
     },
   };
-  const installed = installSockets();
+  const installed = installFakeSocket();
   const stream = new TradeStream();
   const handle = stream.middleware(controller as unknown as Controller)(async action => {
     if (action.type === actionTypes.SET_RESPONSE) listed = true;
@@ -239,6 +202,20 @@ it('drops a scheduled flush after unsubscribe', async () => {
     await dispatch(unsubscribe('BTCUSDT'));
     await nextFrame();
     expect(sets).toHaveLength(0);
+  } finally {
+    stream.cleanup();
+    restore();
+  }
+});
+
+it('catches a rejected tape snapshot', async () => {
+  const { sockets, dispatch, fetch, stream, restore } = harness();
+  fetch.mockRejectedValueOnce(new Error('offline'));
+  try {
+    await dispatch(subscribe('BTCUSDT'));
+    sockets[0].onopen?.();
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledWith(getTrades, { symbol: 'BTCUSDT' });
   } finally {
     stream.cleanup();
     restore();

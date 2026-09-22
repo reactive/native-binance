@@ -3,31 +3,10 @@ import type { Controller } from '@data-client/react';
 
 import { getCandles, upsertCandle } from './Candle';
 import CandleStream from './CandleStream';
+import { FakeSocket, installFakeSocket } from './testSocket';
 
-class FakeSocket {
-  static instances: FakeSocket[] = [];
-  url: string;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-  closed = false;
-
-  constructor(url: string) {
-    this.url = url;
-    FakeSocket.instances.push(this);
-  }
-
-  close() {
-    if (this.closed) return;
-    this.closed = true;
-    this.onclose?.();
-  }
-
-  send() {}
-}
-
-const Original = globalThis.WebSocket;
+let restoreSocket = () => {};
+const streams: CandleStream[] = [];
 
 function candleMessage(symbol: string, interval: string, openTime = 1) {
   return {
@@ -59,18 +38,26 @@ async function dispatch(
 }
 
 beforeEach(() => {
-  FakeSocket.instances = [];
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
+  const installed = installFakeSocket();
+  restoreSocket = installed.restore;
   jest.useFakeTimers();
 });
 
 afterEach(() => {
+  for (const stream of streams) stream.cleanup();
+  streams.length = 0;
   jest.useRealTimers();
-  globalThis.WebSocket = Original;
+  restoreSocket();
 });
 
-it('reference-counts one kline socket per symbol and interval', async () => {
+function createStream() {
   const stream = new CandleStream();
+  streams.push(stream);
+  return stream;
+}
+
+it('reference-counts one kline socket per symbol and interval', async () => {
+  const stream = createStream();
   const ctrl = controller();
   const args = { symbol: 'BTCUSDT', interval: '15m' };
 
@@ -90,7 +77,7 @@ it('reference-counts one kline socket per symbol and interval', async () => {
 });
 
 it('leaves the other interval open when one interval unsubscribes', async () => {
-  const stream = new CandleStream();
+  const stream = createStream();
   const ctrl = controller();
   await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, { symbol: 'BTCUSDT', interval: '15m' });
   await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, { symbol: 'BTCUSDT', interval: '1h' });
@@ -103,7 +90,7 @@ it('leaves the other interval open when one interval unsubscribes', async () => 
 });
 
 it('ignores messages for another symbol, interval, or event', async () => {
-  const stream = new CandleStream();
+  const stream = createStream();
   const ctrl = controller();
   await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, { symbol: 'BTCUSDT', interval: '15m' });
   const socket = FakeSocket.instances[0];
@@ -122,7 +109,7 @@ it('ignores messages for another symbol, interval, or event', async () => {
 });
 
 it('reconnects with backoff and refetches klines after the socket opens', async () => {
-  const stream = new CandleStream();
+  const stream = createStream();
   const ctrl = controller();
   await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, { symbol: 'BTCUSDT', interval: '15m' });
   const first = FakeSocket.instances[0];
@@ -139,4 +126,16 @@ it('reconnects with backoff and refetches klines after the socket opens', async 
   FakeSocket.instances[1].onopen?.();
   expect(ctrl.fetch).toHaveBeenCalledTimes(1);
   expect(ctrl.fetch).toHaveBeenCalledWith(getCandles, { symbol: 'BTCUSDT', interval: '15m' });
+});
+
+it('catches a rejected kline refetch', async () => {
+  const stream = createStream();
+  const ctrl = controller();
+  ctrl.fetch.mockRejectedValueOnce(new Error('offline'));
+  await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, { symbol: 'BTCUSDT', interval: '15m' });
+  FakeSocket.instances[0].close();
+  jest.advanceTimersByTime(500);
+  FakeSocket.instances[1].open();
+  await Promise.resolve();
+  expect(ctrl.fetch).toHaveBeenCalledTimes(1);
 });

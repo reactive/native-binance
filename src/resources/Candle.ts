@@ -1,6 +1,6 @@
 import { Collection, Entity, RestEndpoint } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit } from './hosts';
+import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
 
 export const INTERVALS = [
   { label: '1m', value: '1m' },
@@ -118,6 +118,7 @@ export const getCandles = new RestEndpoint({
   searchParams: {} as { symbol: string; interval: CandleInterval },
   schema: CandleList,
   getRequestInit: binanceGetInit,
+  errorPolicy: keepLastRead,
   searchToString(params: Record<string, unknown>) {
     return new URLSearchParams({
       symbol: String(params.symbol ?? ''),

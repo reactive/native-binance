@@ -1,8 +1,10 @@
 import { actionTypes, Controller } from '@data-client/react';
 import type { Manager, Middleware } from '@data-client/react';
 
-import { BINANCE_STREAM } from './hosts';
 import { getOrderBook, OrderBook } from './OrderBook';
+import { LiveSocket } from './LiveSocket';
+import { streamStatus, type StreamStatus } from './streamStatus';
+import { depthStream } from './streams';
 
 type DepthUpdate = {
   s: string;
@@ -11,10 +13,6 @@ type DepthUpdate = {
   b: unknown;
   a: unknown;
 };
-
-function streamUrl(symbol: string) {
-  return `${BINANCE_STREAM}/${symbol.toLowerCase()}@depth@100ms`;
-}
 
 function symbolFrom(args: readonly unknown[] | undefined): string {
   const arg = args?.[0];
@@ -57,12 +55,15 @@ export default class OrderBookStream implements Manager {
   protected controller: Controller = new Controller();
   private readonly counts = new Map<string, number>();
   private readonly buffers = new Map<string, DepthUpdate[]>();
-  private readonly sockets = new Map<string, WebSocket>();
-  private readonly generation = new Map<string, number>();
-  private readonly attempts = new Map<string, number>();
-  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly sockets = new Map<string, LiveSocket>();
   private readonly tails = new Map<string, Promise<void>>();
   private readonly resyncing = new Set<string>();
+  private readonly resyncFailures = new Map<string, number>();
+  private readonly resyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Last id applied. `getState()` lags the reducer, so the gap check cannot re-read the book. */
+  private readonly heads = new Map<string, number>();
+
+  constructor(private readonly status: StreamStatus = streamStatus) {}
 
   middleware: Middleware = controller => {
     this.controller = controller;
@@ -87,7 +88,18 @@ export default class OrderBookStream implements Manager {
       ) {
         await next(action);
         const symbol = symbolFrom(action.args);
-        if (symbol) this.enqueue(symbol, () => this.flush(symbol));
+        if (symbol) {
+          const raw = (action as { response?: { lastUpdateId?: unknown } }).response
+            ?.lastUpdateId;
+          const id = Number(raw);
+          if (Number.isFinite(id)) {
+            // shouldUpdate keeps the live book when this snapshot is older.
+            const tracked = this.heads.get(symbol) ?? 0;
+            const stored = this.book(symbol)?.lastUpdateId ?? 0;
+            this.heads.set(symbol, Math.max(id, tracked, stored));
+          }
+          this.enqueue(symbol, () => this.flush(symbol));
+        }
         return;
       }
 
@@ -96,14 +108,15 @@ export default class OrderBookStream implements Manager {
   };
 
   cleanup() {
-    for (const timer of this.timers.values()) clearTimeout(timer);
-    this.timers.clear();
-    for (const symbol of this.sockets.keys()) this.bump(symbol);
+    for (const timer of this.resyncTimers.values()) clearTimeout(timer);
+    this.resyncTimers.clear();
     for (const socket of this.sockets.values()) socket.close();
     this.sockets.clear();
     this.counts.clear();
     this.buffers.clear();
+    this.heads.clear();
     this.resyncing.clear();
+    this.resyncFailures.clear();
   }
 
   private subscribe(symbol: string) {
@@ -111,7 +124,6 @@ export default class OrderBookStream implements Manager {
     this.counts.set(symbol, count);
     if (count > 1) return;
     this.buffers.set(symbol, []);
-    this.attempts.set(symbol, 0);
     this.connect(symbol);
   }
 
@@ -123,56 +135,29 @@ export default class OrderBookStream implements Manager {
     }
     this.counts.delete(symbol);
     this.buffers.delete(symbol);
+    this.heads.delete(symbol);
     this.disconnect(symbol);
   }
 
   private disconnect(symbol: string) {
-    this.bump(symbol);
-    const timer = this.timers.get(symbol);
+    const timer = this.resyncTimers.get(symbol);
     if (timer) clearTimeout(timer);
-    this.timers.delete(symbol);
+    this.resyncTimers.delete(symbol);
+    this.resyncFailures.delete(symbol);
+    this.resyncing.delete(symbol);
     const socket = this.sockets.get(symbol);
     this.sockets.delete(symbol);
     socket?.close();
   }
 
-  private bump(symbol: string) {
-    this.generation.set(symbol, (this.generation.get(symbol) ?? 0) + 1);
-  }
-
   private connect(symbol: string) {
-    const gen = (this.generation.get(symbol) ?? 0) + 1;
-    this.generation.set(symbol, gen);
-    const socket = new WebSocket(streamUrl(symbol));
+    const socket = new LiveSocket({
+      url: depthStream(symbol),
+      status: this.status,
+      onMessage: data => this.onMessage(symbol, data),
+      onOpen: () => {},
+    });
     this.sockets.set(symbol, socket);
-    socket.onmessage = event => {
-      if (this.generation.get(symbol) !== gen) return;
-      this.onMessage(symbol, event.data);
-    };
-    socket.onopen = () => {
-      if (this.generation.get(symbol) !== gen) return;
-      this.attempts.set(symbol, 0);
-    };
-    socket.onerror = () => {
-      socket.close();
-    };
-    socket.onclose = () => {
-      if (this.generation.get(symbol) !== gen) return;
-      if (!this.counts.has(symbol)) return;
-      this.scheduleReconnect(symbol);
-    };
-  }
-
-  private scheduleReconnect(symbol: string) {
-    const attempt = this.attempts.get(symbol) ?? 0;
-    this.attempts.set(symbol, attempt + 1);
-    const delay = Math.min(10_000, 2 ** attempt * 500);
-    const timer = setTimeout(() => {
-      this.timers.delete(symbol);
-      if (!this.counts.has(symbol)) return;
-      this.connect(symbol);
-    }, delay);
-    this.timers.set(symbol, timer);
   }
 
   private onMessage(symbol: string, data: unknown) {
@@ -199,41 +184,65 @@ export default class OrderBookStream implements Manager {
     );
   }
 
-  /** Hand each diff to the entity. Merge applies it; a refused newer id is a gap. */
+  /** Hand each diff to the entity. An id past the last applied update is a gap. */
   private async flush(symbol: string) {
     const buffer = this.buffers.get(symbol);
-    if (!buffer?.length || !this.book(symbol)) return;
+    if (!buffer?.length) return;
+    let head = this.heads.get(symbol);
+    if (head == null) {
+      const book = this.book(symbol);
+      if (!book) return;
+      head = book.lastUpdateId;
+      this.heads.set(symbol, head);
+    }
 
     const pending = buffer.splice(0, buffer.length);
     for (let i = 0; i < pending.length; i++) {
       const event = pending[i];
-      const before = this.book(symbol);
-      if (!before) {
-        buffer.unshift(...pending.slice(i));
-        return;
-      }
-      await this.controller.set(OrderBook, { symbol }, event);
-      const after = this.book(symbol);
-      if (
-        after &&
-        event.u > before.lastUpdateId &&
-        after.lastUpdateId === before.lastUpdateId
-      ) {
+      if (event.u <= head) continue;
+      if (event.U > head + 1) {
         buffer.unshift(...pending.slice(i));
         this.resync(symbol);
         return;
       }
+      await this.controller.set(OrderBook, { symbol }, event);
+      const latest = this.heads.get(symbol);
+      if (latest != null && latest > event.u) {
+        head = latest;
+        continue;
+      }
+      head = event.u;
+      this.heads.set(symbol, head);
     }
   }
 
   /** Snapshot again so buffered diffs can bridge `lastUpdateId`. */
   private resync(symbol: string) {
-    if (this.resyncing.has(symbol) || !this.counts.has(symbol)) return;
+    if (
+      this.resyncing.has(symbol) ||
+      this.resyncTimers.has(symbol) ||
+      !this.counts.has(symbol)
+    ) {
+      return;
+    }
     this.resyncing.add(symbol);
-    void Promise.resolve(this.controller.fetch(getOrderBook, { symbol })).finally(
-      () => {
+    const failures = this.resyncFailures.get(symbol) ?? 0;
+    void Promise.resolve(this.controller.fetch(getOrderBook, { symbol }))
+      .then(() => {
+        this.resyncFailures.set(symbol, 0);
+      })
+      .catch(() => {
+        const delay = Math.min(10_000, 2 ** failures * 500);
+        this.resyncFailures.set(symbol, failures + 1);
+        const timer = setTimeout(() => {
+          this.resyncTimers.delete(symbol);
+          if (!this.counts.has(symbol)) return;
+          this.enqueue(symbol, () => this.flush(symbol));
+        }, delay);
+        this.resyncTimers.set(symbol, timer);
+      })
+      .finally(() => {
         this.resyncing.delete(symbol);
-      },
-    );
+      });
   }
 }

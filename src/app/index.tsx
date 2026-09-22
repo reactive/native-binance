@@ -1,19 +1,37 @@
-import { AsyncBoundary, useLive, useSuspense } from '@data-client/react';
+import { AsyncBoundary, useController, useSuspense } from '@data-client/react';
 import { Heading, Skeleton, useTheme } from '@reactive/silk-native';
-import { useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LoadError } from '@/components/LoadError';
 import { MARKET_ROW_HEIGHT } from '@/components/MarketRow';
 import { MarketList, MarketsChrome } from '@/components/MarketsScreen';
+import { TickerFeed } from '@/components/TickerFeed';
 import type { MarketSort } from '@/resources/Markets';
 import { getExchangeInfo } from '@/resources/Symbol';
-import { getTickers } from '@/resources/Ticker';
 import { getWatching } from '@/resources/Watching';
 
-function TickerFeed(): null {
-  useLive(getTickers);
-  return null;
+function exchangeInfoReady(controller: ReturnType<typeof useController>): boolean {
+  const state = controller.getState();
+  const { data } = controller.getResponse(getExchangeInfo, state);
+  const symbols =
+    data && typeof data === 'object' && 'symbols' in data
+      ? ((data as { symbols?: unknown[] }).symbols?.length ?? 0)
+      : 0;
+  return symbols > 0 || Boolean(controller.getError(getExchangeInfo, state));
+}
+
+/** The first `/exchangeInfo` read has produced a resource-timing entry. */
+function exchangeInfoReadFinished(): boolean {
+  const timing = globalThis.performance;
+  if (typeof timing?.getEntriesByType !== 'function') return false;
+  return timing.getEntriesByType('resource').some(
+    entry =>
+      entry.name.includes('/exchangeInfo') &&
+      'responseEnd' in entry &&
+      (entry as { responseEnd: number }).responseEnd > 0,
+  );
 }
 
 function Markets(): JSX.Element {
@@ -28,9 +46,7 @@ function Markets(): JSX.Element {
 
   return (
     <View style={styles.body}>
-      <AsyncBoundary fallback={null}>
-        <TickerFeed />
-      </AsyncBoundary>
+      <TickerFeed />
       <MarketsChrome
         quote={quote}
         sort={sort}
@@ -46,6 +62,23 @@ function Markets(): JSX.Element {
         onQuery={setQuery}
       />
       <MarketList quote={quote} sort={sort} query={query} watching={watching} watchKey={watchKey} />
+    </View>
+  );
+}
+
+function MarketsError({
+  resetErrorBoundary,
+}: {
+  resetErrorBoundary: () => void;
+}): JSX.Element {
+  return (
+    <View style={styles.body}>
+      <View style={styles.title}>
+        <Heading level="1" size="md">
+          Markets
+        </Heading>
+      </View>
+      <LoadError what="the markets" onRetry={resetErrorBoundary} />
     </View>
   );
 }
@@ -74,9 +107,49 @@ function MarketsLoading(): JSX.Element {
 
 export default function HomeScreen(): JSX.Element {
   const { theme } = useTheme();
+  const controller = useController();
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(() => {
+    // The symbol route is its own bundle. Load it while this screen is online
+    // so opening a market still works after the network drops.
+    void import('./symbol/[symbol]');
+    // A read that fails before DataProvider commits never reaches the store, and
+    // NetworkManager keeps the promise, so the boundary stays on the skeleton.
+    // Only replace that read after its HTTP request has finished. An empty cache
+    // before then is a slow first load, and a second failure must not cover it.
+    let cancelled = false;
+    let grace: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      if (cancelled || exchangeInfoReady(controllerRef.current) || !exchangeInfoReadFinished()) {
+        return;
+      }
+      grace = setTimeout(() => {
+        const current = controllerRef.current;
+        if (cancelled || exchangeInfoReady(current)) return;
+        void Promise.resolve(getExchangeInfo()).then(
+          response => {
+            if (!cancelled && !exchangeInfoReady(current)) {
+              current.setResponse(getExchangeInfo, response);
+            }
+          },
+          (err: Error) => {
+            if (!cancelled && !exchangeInfoReady(current)) {
+              current.setError(getExchangeInfo, err);
+            }
+          },
+        );
+      }, 50);
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      clearTimeout(grace);
+    };
+  }, []);
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
-      <AsyncBoundary fallback={<MarketsLoading />}>
+      <AsyncBoundary fallback={<MarketsLoading />} errorComponent={MarketsError}>
         <Markets />
       </AsyncBoundary>
     </SafeAreaView>

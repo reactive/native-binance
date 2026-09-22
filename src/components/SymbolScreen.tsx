@@ -1,20 +1,24 @@
 import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Badge, Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { router } from 'expo-router';
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChartBody from '@/components/ChartBody';
 import { InstrumentInfo } from '@/components/InstrumentInfo';
+import { LoadError } from '@/components/LoadError';
 import OrderBookView from '@/components/OrderBookView';
+import { Reconnecting } from '@/components/Reconnecting';
+import { TickerFeed } from '@/components/TickerFeed';
 import TradeTape from '@/components/TradeTape';
 import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/formatMarket';
 import type { CandleInterval } from '@/resources/Candle';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
-import { getTickers, Ticker } from '@/resources/Ticker';
+import { Ticker } from '@/resources/Ticker';
 import { getWatching, setWatched } from '@/resources/Watching';
+import { depthStream, klineStream, TICKER_STREAM, tradeStream } from '@/resources/streams';
 
 const TOP_BAR = 48;
 const STRIP = 64;
@@ -105,7 +109,7 @@ function WatchControl({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
-function TopBar({ symbol }: { symbol: string }): JSX.Element {
+function TopBar({ symbol, retry }: { symbol: string; retry: number }): JSX.Element {
   return (
     <View style={styles.topBar}>
       <Pressable
@@ -119,11 +123,17 @@ function TopBar({ symbol }: { symbol: string }): JSX.Element {
       </Pressable>
       <View style={styles.title}>
         <AsyncBoundary
+          key={retry}
           fallback={
             <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair">
               {symbol}
             </Heading>
           }
+          errorComponent={() => (
+            <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair">
+              {symbol}
+            </Heading>
+          )}
         >
           <PairTitle symbol={symbol} />
         </AsyncBoundary>
@@ -133,10 +143,13 @@ function TopBar({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
-function PriceStripFallback(): JSX.Element {
+function PriceStripFallback({ streams }: { streams: readonly string[] }): JSX.Element {
   return (
     <View style={styles.strip}>
-      <Skeleton style={styles.priceSkeleton} />
+      <View style={styles.stripLine}>
+        <Skeleton style={styles.priceSkeleton} />
+        <Reconnecting urls={streams} testID="symbol-reconnecting" style={styles.reconnect} />
+      </View>
       <Skeleton style={styles.statSkeleton} />
     </View>
   );
@@ -163,17 +176,18 @@ function Stat({
   );
 }
 
-function TickerFeed(): null {
-  useLive(getTickers);
-  return null;
-}
-
-function PriceStrip({ symbol }: { symbol: string }): JSX.Element {
+function PriceStrip({
+  symbol,
+  streams,
+}: {
+  symbol: string;
+  streams: readonly string[];
+}): JSX.Element {
   useSuspense(getExchangeInfo);
   const ticker = useQuery(Ticker, { symbol });
   const instrument = useQuery(MarketSymbol, { symbol });
   const { theme } = useTheme();
-  if (!ticker) return <PriceStripFallback />;
+  if (!ticker) return <PriceStripFallback streams={streams} />;
 
   const places = instrument?.pricePlaces ?? decimalsOf(ticker.last);
   const last = formatPrice(ticker.last, places);
@@ -184,7 +198,12 @@ function PriceStrip({ symbol }: { symbol: string }): JSX.Element {
   return (
     <View style={styles.strip} testID="price-strip">
       <View style={styles.stripLine}>
-        <Text role="headingLg" style={TABULAR} numberOfLines={1} testID="symbol-last">
+        <Text
+          role="headingLg"
+          style={[TABULAR, styles.last]}
+          numberOfLines={1}
+          testID="symbol-last"
+        >
           {last}
         </Text>
         {instrument && instrument.status !== '' && instrument.status !== 'TRADING' ?
@@ -194,12 +213,13 @@ function PriceStrip({ symbol }: { symbol: string }): JSX.Element {
         : <Text
             role="label"
             tone={direction === 0 ? 'secondary' : undefined}
-            style={[TABULAR, direction > 0 ? { color: up } : direction < 0 ? { color: down } : null]}
+            style={[TABULAR, styles.percent, direction > 0 ? { color: up } : direction < 0 ? { color: down } : null]}
             testID="symbol-percent"
           >
             {formatPercent(ticker.percent)}
           </Text>
         }
+        <Reconnecting urls={streams} testID="symbol-reconnecting" style={styles.reconnect} />
       </View>
       <View style={styles.stats}>
         <Stat label="High" value={formatPrice(ticker.high, places)} testID="symbol-high" />
@@ -258,39 +278,61 @@ function LiveBook({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
+function streamUrls(symbol: string, segment: Segment, interval: CandleInterval): string[] {
+  const urls = [TICKER_STREAM];
+  if (segment === 'Book') urls.push(depthStream(symbol));
+  else if (segment === 'Trades') urls.push(tradeStream(symbol));
+  else if (segment === 'Chart') urls.push(klineStream(symbol, interval));
+  return urls;
+}
+
 export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Element {
   const { theme } = useTheme();
   const [segment, setSegment] = useState<Segment>('Book');
   const [chartInterval, setChartInterval] = useState<CandleInterval>('15m');
+  const [retry, setRetry] = useState(0);
+  const streams = useMemo(
+    () => streamUrls(symbol, segment, chartInterval),
+    [symbol, segment, chartInterval],
+  );
+  const retryLoad = () => setRetry(count => count + 1);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
-      <TopBar symbol={symbol} />
-      <AsyncBoundary fallback={null}>
-        <TickerFeed />
-      </AsyncBoundary>
-      <AsyncBoundary fallback={<PriceStripFallback />}>
-        <PriceStrip symbol={symbol} />
+      <TopBar symbol={symbol} retry={retry} />
+      <TickerFeed />
+      <AsyncBoundary
+        key={retry}
+        fallback={<PriceStripFallback streams={streams} />}
+        errorComponent={() => <PriceStripFallback streams={streams} />}
+      >
+        <PriceStrip symbol={symbol} streams={streams} />
       </AsyncBoundary>
       <Segments segment={segment} onSelect={setSegment} />
       <View style={styles.body} testID="symbol-body">
         {segment === 'Book' ?
           <AsyncBoundary
+            key={retry}
             fallback={
               <Text tone="secondary" testID="book-loading">
                 Loading {symbol}
               </Text>
             }
+            errorComponent={() => (
+              <LoadError what={`the ${symbol} book`} onRetry={retryLoad} />
+            )}
           >
             <LiveBook symbol={symbol} />
           </AsyncBoundary>
         : segment === 'Trades' ?
           <AsyncBoundary
+            key={retry}
             fallback={
               <Text tone="secondary" testID="trades-loading">
                 Loading {symbol}
               </Text>
             }
+            errorComponent={() => <LoadError what={`${symbol} trades`} onRetry={retryLoad} />}
           >
             <TradeTape symbol={symbol} />
           </AsyncBoundary>
@@ -299,14 +341,18 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
             symbol={symbol}
             interval={chartInterval}
             onInterval={setChartInterval}
+            onRetry={retryLoad}
+            retry={retry}
           />
         : segment === 'Info' ?
           <AsyncBoundary
+            key={retry}
             fallback={
               <Text tone="secondary" testID="info-loading">
                 Loading {symbol}
               </Text>
             }
+            errorComponent={() => <LoadError what={`${symbol} details`} onRetry={retryLoad} />}
           >
             <InstrumentInfo symbol={symbol} />
           </AsyncBoundary>
@@ -351,6 +397,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  last: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  percent: {
+    flexShrink: 0,
+  },
+  reconnect: {
+    marginLeft: 'auto',
   },
   stats: {
     flexDirection: 'row',

@@ -1,10 +1,10 @@
 import { actionTypes, Controller } from '@data-client/react';
 import type { Manager, Middleware } from '@data-client/react';
 
-import { BINANCE_STREAM } from './hosts';
+import { LiveSocket } from './LiveSocket';
+import { streamStatus, type StreamStatus } from './streamStatus';
+import { TICKER_STREAM } from './streams';
 import { getTickers, Ticker } from './Ticker';
-
-const STREAM_URL = `${BINANCE_STREAM}/!miniTicker@arr`;
 
 /** `!miniTicker@arr` payload, or the `{ data }` wrapper a combined stream uses. */
 export function readMiniTickers(data: unknown): object[] | undefined {
@@ -42,12 +42,11 @@ export function mergeTickerRows(pending: Map<string, object>, rows: readonly obj
 export default class TickerStream implements Manager {
   protected controller: Controller = new Controller();
   private count = 0;
-  private socket: WebSocket | undefined;
-  private generation = 0;
-  private attempts = 0;
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly sockets = new Map<string, LiveSocket>();
   private pending = new Map<string, object>();
   private writing = false;
+
+  constructor(private readonly status: StreamStatus = streamStatus) {}
 
   middleware: Middleware = controller => {
     this.controller = controller;
@@ -73,7 +72,6 @@ export default class TickerStream implements Manager {
   private subscribe() {
     this.count += 1;
     if (this.count > 1) return;
-    this.attempts = 0;
     this.connect();
   }
 
@@ -84,49 +82,29 @@ export default class TickerStream implements Manager {
   }
 
   private disconnect() {
-    this.generation += 1;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = undefined;
     this.pending = new Map();
-    const socket = this.socket;
-    this.socket = undefined;
+    const socket = this.sockets.get(TICKER_STREAM);
+    this.sockets.delete(TICKER_STREAM);
     socket?.close();
   }
 
   private connect() {
-    const gen = ++this.generation;
-    const socket = new WebSocket(STREAM_URL);
-    this.socket = socket;
-    socket.onmessage = event => {
-      if (this.generation !== gen) return;
-      const rows = readMiniTickers(event.data);
-      if (!rows) return;
-      mergeTickerRows(this.pending, rows);
-      this.flush();
-    };
-    socket.onopen = () => {
-      if (this.generation !== gen) return;
-      this.attempts = 0;
-    };
-    socket.onerror = () => {
-      socket.close();
-    };
-    socket.onclose = () => {
-      if (this.generation !== gen) return;
-      if (this.count < 1) return;
-      this.scheduleReconnect();
-    };
-  }
-
-  private scheduleReconnect() {
-    const attempt = this.attempts;
-    this.attempts += 1;
-    const delay = Math.min(10_000, 2 ** attempt * 500);
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      if (this.count < 1) return;
-      this.connect();
-    }, delay);
+    const socket = new LiveSocket({
+      url: TICKER_STREAM,
+      status: this.status,
+      onMessage: data => {
+        const rows = readMiniTickers(data);
+        if (!rows) return;
+        mergeTickerRows(this.pending, rows);
+        this.flush();
+      },
+      onOpen: reopened => {
+        if (!reopened) return;
+        // Quiet symbols are absent from `!miniTicker@arr`, so a recovered socket refetches them.
+        void Promise.resolve(this.controller.fetch(getTickers)).catch(() => {});
+      },
+    });
+    this.sockets.set(TICKER_STREAM, socket);
   }
 
   /** Each message is a change-set. Writes merge one entity at a time and keep every symbol that arrived while a write was in flight. */

@@ -1,6 +1,6 @@
 import { Entity, RestEndpoint } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit } from './hosts';
+import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
 
 type TickerInput = {
   symbol?: string;
@@ -66,6 +66,16 @@ export class Ticker extends Entity {
     return incoming.eventTime >= existing.eventTime;
   }
 
+  /** A snapshot can resolve after a newer socket write and still carry the later close. */
+  static shouldReorder(
+    _existingMeta: { date: number; fetchedAt: number },
+    _incomingMeta: { date: number; fetchedAt: number },
+    existing: { eventTime: number },
+    incoming: { eventTime: number },
+  ) {
+    return incoming.eventTime < existing.eventTime;
+  }
+
   static process(input: TickerInput) {
     if (!input || typeof input !== 'object') throw new Error('Invalid ticker');
     const mini = isMini(input);
@@ -89,4 +99,5 @@ export const getTickers = new RestEndpoint({
   path: '/ticker/24hr',
   schema: [Ticker],
   getRequestInit: binanceGetInit,
+  errorPolicy: keepLastRead,
 });

@@ -13,7 +13,9 @@ import {
 
 import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
 import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
+import { Reconnecting } from '@/components/Reconnecting';
 import { getMarkets, type MarketSort } from '@/resources/Markets';
+import { TICKER_STREAM } from '@/resources/streams';
 
 const QUOTES = ['USDT', 'USDC', 'FDUSD', 'BTC', 'ETH'] as const;
 const SORTS: readonly { id: MarketSort; label: string }[] = [
@@ -23,6 +25,7 @@ const SORTS: readonly { id: MarketSort; label: string }[] = [
 ];
 
 const TITLE_HEIGHT = 48;
+const TICKER_URLS = [TICKER_STREAM];
 const QUOTE_HEIGHT = 40;
 const SORT_HEIGHT = 36;
 const GUTTER = 12;
@@ -94,6 +97,7 @@ export function MarketsChrome({
         <Heading level="1" size="md" numberOfLines={1} testID="markets-title">
           Markets
         </Heading>
+        <Reconnecting urls={TICKER_URLS} testID="markets-reconnecting" />
         <Input
           size="sm"
           value={query}

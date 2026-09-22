@@ -1,6 +1,6 @@
 import { Collection, Entity, RestEndpoint } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit } from './hosts';
+import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
 
 export const TAPE_LIMIT = 100;
 
@@ -79,6 +79,7 @@ export const getTrades = new RestEndpoint({
   searchParams: {} as { symbol: string },
   schema: tape,
   getRequestInit: binanceGetInit,
+  errorPolicy: keepLastRead,
   searchToString(searchParams: Record<string, unknown>) {
     return new URLSearchParams({
       symbol: String(searchParams.symbol ?? ''),
