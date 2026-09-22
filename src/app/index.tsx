@@ -15,10 +15,7 @@ function LiveBook() {
       symbol={book.symbol}
       bids={book.bids}
       asks={book.asks}
-      bestBid={book.bestBid}
-      bestAsk={book.bestAsk}
       spread={book.spread}
-      midPrice={book.midPrice}
     />
   );
 }
