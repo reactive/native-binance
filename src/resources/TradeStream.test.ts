@@ -58,6 +58,14 @@ function unsubscribe(symbol: string) {
   return { type: actionTypes.UNSUBSCRIBE, endpoint: getTrades, args: [{ symbol }] };
 }
 
+function nextFrame() {
+  return act(async () => {
+    await new Promise<void>(resolve => {
+      setTimeout(resolve, 0);
+    });
+  });
+}
+
 function harness() {
   const sets: { schema: unknown; args: { symbol: string }; value: unknown[] }[] = [];
   let listed = false;
@@ -191,8 +199,10 @@ it('ignores another symbol, a non-trade frame, and invalid JSON', async () => {
     sockets[0].onmessage?.({ data: JSON.stringify(frame(1, 'ETHUSDT')) });
     sockets[0].onmessage?.({ data: JSON.stringify(frame(1, 'BTCUSDT', 'depthUpdate')) });
     sockets[0].onmessage?.({ data: '{' });
+    await nextFrame();
     expect(sets).toHaveLength(0);
     sockets[0].onmessage?.({ data: JSON.stringify(frame(3)) });
+    await nextFrame();
     expect(sets).toHaveLength(1);
     expect(sets[0].value).toHaveLength(1);
   } finally {
@@ -209,13 +219,26 @@ it('writes a burst as batches of at most 100', async () => {
     for (let id = 1; id <= 250; id++) {
       sockets[0].onmessage?.({ data: JSON.stringify(frame(id)) });
     }
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(sets.length).toBeGreaterThan(0);
-    expect(sets.every(write => write.value.length <= 100)).toBe(true);
-    const written = sets.reduce((count, write) => count + write.value.length, 0);
-    expect(written).toBeLessThanOrEqual(101);
+    await nextFrame();
+    expect(sets).toHaveLength(1);
+    expect(sets[0].value).toHaveLength(100);
+    expect((sets[0].value[0] as { a: number }).a).toBe(151);
+    expect((sets[0].value[99] as { a: number }).a).toBe(250);
+  } finally {
+    stream.cleanup();
+    restore();
+  }
+});
+
+it('drops a scheduled flush after unsubscribe', async () => {
+  const { sockets, dispatch, sets, stream, restore, listed } = harness();
+  try {
+    await dispatch(subscribe('BTCUSDT'));
+    listed();
+    sockets[0].onmessage?.({ data: JSON.stringify(frame(1)) });
+    await dispatch(unsubscribe('BTCUSDT'));
+    await nextFrame();
+    expect(sets).toHaveLength(0);
   } finally {
     stream.cleanup();
     restore();

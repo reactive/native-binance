@@ -15,8 +15,9 @@ function symbolFrom(args: readonly unknown[] | undefined): string {
   return typeof symbol === 'string' ? symbol.toUpperCase() : '';
 }
 
-/** Aggregate-trade frame, or undefined when the payload is not one for this socket. */
-function readAggTrade(data: unknown): Record<string, unknown> | undefined {
+type AggFrame = Record<string, unknown> & { s: string };
+
+function readAggTrade(data: unknown): AggFrame | undefined {
   let msg: unknown = data;
   if (typeof data === 'string') {
     try {
@@ -30,7 +31,15 @@ function readAggTrade(data: unknown): Record<string, unknown> | undefined {
   if (record.e !== 'aggTrade' || typeof record.s !== 'string' || !Number.isFinite(Number(record.a))) {
     return;
   }
-  return record;
+  return record as AggFrame;
+}
+
+function scheduleFrame(run: () => void) {
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(run);
+    return;
+  }
+  setTimeout(run, 0);
 }
 
 /**
@@ -41,7 +50,7 @@ function readAggTrade(data: unknown): Record<string, unknown> | undefined {
 export default class TradeStream implements Manager {
   protected controller: Controller = new Controller();
   private readonly counts = new Map<string, number>();
-  private readonly pending = new Map<string, Record<string, unknown>[]>();
+  private readonly pending = new Map<string, AggFrame[]>();
   private readonly sockets = new Map<string, WebSocket>();
   private readonly generation = new Map<string, number>();
   private readonly attempts = new Map<string, number>();
@@ -53,6 +62,10 @@ export default class TradeStream implements Manager {
    */
   private readonly syncing = new Set<string>();
   private readonly writing = new Set<string>();
+  /** A flush is already queued for this frame. */
+  private readonly scheduled = new Set<string>();
+  /** The tape collection has been seen, so later frames skip `controller.get`. */
+  private readonly ready = new Set<string>();
 
   middleware: Middleware = controller => {
     this.controller = controller;
@@ -72,14 +85,20 @@ export default class TradeStream implements Manager {
 
       if (action.type === actionTypes.FETCH && action.endpoint === getTrades) {
         const symbol = symbolFrom(action.args);
-        if (symbol) this.noteFetch(symbol);
+        if (symbol) {
+          this.syncing.add(symbol);
+          this.ready.delete(symbol);
+        }
         return next(action);
       }
 
       if (action.type === actionTypes.SET_RESPONSE && action.endpoint === getTrades) {
         const symbol = symbolFrom(action.args);
         const result = await next(action);
-        if (symbol) this.noteResponse(symbol);
+        if (symbol) {
+          this.syncing.delete(symbol);
+          this.flush(symbol);
+        }
         return result;
       }
 
@@ -97,6 +116,8 @@ export default class TradeStream implements Manager {
     this.pending.clear();
     this.syncing.clear();
     this.writing.clear();
+    this.scheduled.clear();
+    this.ready.clear();
   }
 
   private subscribe(symbol: string) {
@@ -118,6 +139,8 @@ export default class TradeStream implements Manager {
     this.pending.delete(symbol);
     this.syncing.delete(symbol);
     this.writing.delete(symbol);
+    this.scheduled.delete(symbol);
+    this.ready.delete(symbol);
     this.disconnect(symbol);
   }
 
@@ -173,38 +196,41 @@ export default class TradeStream implements Manager {
 
   private onMessage(symbol: string, data: unknown) {
     const trade = readAggTrade(data);
-    if (!trade || String(trade.s).toUpperCase() !== symbol) return;
+    if (!trade || trade.s.toUpperCase() !== symbol) return;
     const buffer = this.pending.get(symbol);
     if (!buffer) return;
     buffer.push(trade);
     if (buffer.length > TAPE_LIMIT) buffer.splice(0, buffer.length - TAPE_LIMIT);
-    this.flush(symbol);
+    this.scheduleFlush(symbol);
   }
 
-  private noteFetch(symbol: string) {
-    this.syncing.add(symbol);
-  }
-
-  private noteResponse(symbol: string) {
-    this.syncing.delete(symbol);
-    this.flush(symbol);
+  private scheduleFlush(symbol: string) {
+    if (this.scheduled.has(symbol)) return;
+    this.scheduled.add(symbol);
+    scheduleFrame(() => {
+      if (!this.scheduled.delete(symbol)) return;
+      this.flush(symbol);
+    });
   }
 
   private flush(symbol: string) {
     if (this.writing.has(symbol) || this.syncing.has(symbol)) return;
     const buffer = this.pending.get(symbol);
     if (!buffer?.length) return;
-    if (
-      this.controller.get(getTrades.schema, { symbol }, this.controller.getState()) ===
-      undefined
-    ) {
-      return;
+    if (!this.ready.has(symbol)) {
+      if (
+        this.controller.get(getTrades.schema, { symbol }, this.controller.getState()) ===
+        undefined
+      ) {
+        return;
+      }
+      this.ready.add(symbol);
     }
     const batch = buffer.splice(0, buffer.length);
     this.writing.add(symbol);
     void Promise.resolve(this.controller.set(newTrades, { symbol }, batch)).finally(() => {
       this.writing.delete(symbol);
-      this.flush(symbol);
+      if (this.pending.get(symbol)?.length) this.scheduleFlush(symbol);
     });
   }
 }
