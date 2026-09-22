@@ -58,7 +58,7 @@ function Chip({ label, selected, onPress, testID }: ChipProps): JSX.Element {
 }
 
 function openBook(symbol: string) {
-  router.push(`/book/${symbol}` as Href);
+  router.push(`/symbol/${symbol}` as Href);
 }
 
 function getItemLayout(_: ArrayLike<string> | null | undefined, index: number) {
@@ -194,7 +194,7 @@ export function MarketList({
           No markets match
         </Text>
       : <FlatList
-          // Quote, query, and sort start at the top. This key stays put while the book is open, so the offset is still here on the way back.
+          // Quote, query, and sort start at the top. This key stays put while a symbol is open, so the offset is still here on the way back.
           key={argsKey}
           testID="markets"
           data={ids}

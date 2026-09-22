@@ -1,5 +1,5 @@
 import { Text, useTheme } from '@reactive/silk-native';
-import { memo, useCallback, useMemo, useRef, type JSX } from 'react';
+import { memo, useCallback, useMemo, type JSX } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -7,6 +7,9 @@ import {
   type ListRenderItem,
   type TextStyle,
 } from 'react-native';
+
+import { formatPrice, formatSize } from '@/components/formatMarket';
+import { usePlaces, type Places } from '@/components/places';
 
 export type Level = readonly [price: number, qty: number];
 
@@ -17,6 +20,10 @@ export type OrderBookViewProps = {
   /** Price ascending; best ask is asks[0]. */
   asks: readonly Level[];
   spread: number;
+  /** Instrument tick places. Omitted until Symbol has loaded, so prices only widen. */
+  pricePlaces?: number;
+  /** Instrument step places. Omitted until Symbol has loaded, so sizes only widen. */
+  sizePlaces?: number;
 };
 
 /** Fixed row height so FlatList can use getItemLayout; bodySm (14px) text sits centered. */
@@ -45,46 +52,6 @@ type RowPalette = {
   readonly askBar: string;
 };
 
-type Formats = {
-  readonly priceDecimals: number;
-  readonly qtyDecimals: number;
-};
-
-function countDecimals(value: number): number {
-  // 12 significant digits drops binary float noise (86412.38999999 -> 86412.39).
-  const text = String(Number(value.toPrecision(12)));
-  const dot = text.indexOf('.');
-  if (dot === -1) return 0;
-  const exp = text.indexOf('e-');
-  if (exp !== -1) return Math.min(8, Number(text.slice(exp + 2)) + (exp - dot - 1));
-  return text.length - dot - 1;
-}
-
-function maxDecimals(levels: readonly Level[], index: 0 | 1, sample: number): number {
-  let max = 0;
-  const end = Math.min(levels.length, sample);
-  for (let i = 0; i < end; i++) {
-    const d = countDecimals(levels[i][index]);
-    if (d > max) max = d;
-  }
-  return max;
-}
-
-function groupThousands(integer: string): string {
-  return integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-export function formatPrice(value: number, decimals: number): string {
-  const fixed = value.toFixed(decimals);
-  const dot = fixed.indexOf('.');
-  if (dot === -1) return groupThousands(fixed);
-  return groupThousands(fixed.slice(0, dot)) + fixed.slice(dot);
-}
-
-export function formatQty(value: number, decimals: number): string {
-  return value.toFixed(decimals);
-}
-
 function meanQty(levels: readonly Level[], sample: number): number {
   const end = Math.min(levels.length, sample);
   if (end === 0) return 0;
@@ -99,7 +66,7 @@ type LevelRowProps = {
   readonly qty: number;
   /** 0..1 share of the bar track. */
   readonly ratio: number;
-  readonly formats: Formats;
+  readonly places: Places;
   readonly palette: RowPalette;
   /** Only the best row of each side carries one (`best-bid` / `best-ask`). */
   readonly testID?: string;
@@ -110,12 +77,12 @@ const LevelRow = memo(function LevelRow({
   price,
   qty,
   ratio,
-  formats,
+  places,
   palette,
   testID,
 }: LevelRowProps): JSX.Element {
-  const priceText = formatPrice(price, formats.priceDecimals);
-  const qtyText = formatQty(qty, formats.qtyDecimals);
+  const priceText = formatPrice(price, places.price);
+  const qtyText = formatSize(qty, places.size);
   const isBid = side === 'bid';
   return (
     <View
@@ -160,6 +127,8 @@ export function OrderBookView({
   bids,
   asks,
   spread,
+  pricePlaces,
+  sizePlaces,
 }: OrderBookViewProps): JSX.Element {
   const { theme } = useTheme();
   const color = theme.semantic.color;
@@ -177,34 +146,19 @@ export function OrderBookView({
     [color],
   );
 
-  // Decimal places only ever widen, so columns never jitter as levels come and go.
-  const decimalsRef = useRef<Formats>({ priceDecimals: 2, qtyDecimals: 2 });
-  const formats = useMemo<Formats>(() => {
-    const prev = decimalsRef.current;
-    const next: Formats = {
-      priceDecimals: Math.min(
-        8,
-        Math.max(
-          prev.priceDecimals,
-          maxDecimals(asks, 0, BAR_REFERENCE_LEVELS),
-          maxDecimals(bids, 0, BAR_REFERENCE_LEVELS),
-        ),
-      ),
-      qtyDecimals: Math.min(
-        8,
-        Math.max(
-          prev.qtyDecimals,
-          maxDecimals(asks, 1, BAR_REFERENCE_LEVELS),
-          maxDecimals(bids, 1, BAR_REFERENCE_LEVELS),
-        ),
-      ),
-    };
-    if (next.priceDecimals === prev.priceDecimals && next.qtyDecimals === prev.qtyDecimals) {
-      return prev;
-    }
-    decimalsRef.current = next;
-    return next;
-  }, [asks, bids]);
+  const priceSample: number[] = [];
+  const sizeSample: number[] = [];
+  const askCount = Math.min(asks.length, BAR_REFERENCE_LEVELS);
+  const bidCount = Math.min(bids.length, BAR_REFERENCE_LEVELS);
+  for (let i = 0; i < askCount; i++) {
+    priceSample.push(asks[i][0]);
+    sizeSample.push(asks[i][1]);
+  }
+  for (let i = 0; i < bidCount; i++) {
+    priceSample.push(bids[i][0]);
+    sizeSample.push(bids[i][1]);
+  }
+  const places = usePlaces({ price: pricePlaces, size: sizePlaces }, priceSample, sizeSample);
 
   const barReference = useMemo(() => {
     const mean =
@@ -219,12 +173,12 @@ export function OrderBookView({
         price={item[0]}
         qty={item[1]}
         ratio={Math.min(1, item[1] / barReference)}
-        formats={formats}
+        places={places}
         palette={palette}
         testID={index === 0 ? 'best-ask' : undefined}
       />
     ),
-    [barReference, formats, palette],
+    [barReference, places, palette],
   );
 
   const renderBid = useCallback<ListRenderItem<Level>>(
@@ -234,12 +188,12 @@ export function OrderBookView({
         price={item[0]}
         qty={item[1]}
         ratio={Math.min(1, item[1] / barReference)}
-        formats={formats}
+        places={places}
         palette={palette}
         testID={index === 0 ? 'best-bid' : undefined}
       />
     ),
-    [barReference, formats, palette],
+    [barReference, places, palette],
   );
 
   const hairline = { borderColor: color.borderSubtle };
@@ -247,7 +201,7 @@ export function OrderBookView({
   const hasBids = bids.length > 0;
   const spreadText =
     hasAsks && hasBids
-      ? `Spread ${formatPrice(spread, formats.priceDecimals)}`
+      ? `Spread ${formatPrice(spread, places.price)}`
       : !hasAsks && !hasBids
         ? 'Waiting for the book'
         : '';
@@ -317,9 +271,11 @@ export function OrderBookView({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    minHeight: 0,
   },
   list: {
     flex: 1,
+    minHeight: 0,
   },
   row: {
     height: ROW_HEIGHT,

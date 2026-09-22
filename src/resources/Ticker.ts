@@ -2,29 +2,24 @@ import { Entity, RestEndpoint } from '@data-client/rest';
 
 import { BINANCE_REST, binanceGetInit } from './hosts';
 
-function num(value: unknown): number {
-  const n = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
 type TickerInput = {
   symbol?: string;
   s?: string;
   e?: string;
-  lastPrice?: unknown;
-  openPrice?: unknown;
-  highPrice?: unknown;
-  lowPrice?: unknown;
-  volume?: unknown;
-  quoteVolume?: unknown;
-  closeTime?: unknown;
-  c?: unknown;
-  o?: unknown;
-  h?: unknown;
-  l?: unknown;
-  v?: unknown;
-  q?: unknown;
-  E?: unknown;
+  lastPrice?: string;
+  openPrice?: string;
+  highPrice?: string;
+  lowPrice?: string;
+  volume?: string;
+  quoteVolume?: string;
+  closeTime?: number;
+  c?: string;
+  o?: string;
+  h?: string;
+  l?: string;
+  v?: string;
+  q?: string;
+  E?: number;
 };
 
 function isMini(input: TickerInput): boolean {
@@ -48,6 +43,15 @@ export class Ticker extends Entity {
 
   static key = 'Ticker';
 
+  static schema = {
+    last: Number,
+    open: Number,
+    high: Number,
+    low: Number,
+    volume: Number,
+    quoteVolume: Number,
+  };
+
   get percent(): number {
     if (!this.open) return 0;
     return (this.last - this.open) / this.open;
@@ -67,27 +71,15 @@ export class Ticker extends Entity {
     const mini = isMini(input);
     const symbol = String(mini ? input.s : input.symbol ?? '').toUpperCase();
     if (!symbol) throw new Error('Invalid ticker');
-    if (mini) {
-      return {
-        symbol,
-        last: num(input.c),
-        open: num(input.o),
-        high: num(input.h),
-        low: num(input.l),
-        volume: num(input.v),
-        quoteVolume: num(input.q),
-        eventTime: num(input.E),
-      };
-    }
     return {
       symbol,
-      last: num(input.lastPrice),
-      open: num(input.openPrice),
-      high: num(input.highPrice),
-      low: num(input.lowPrice),
-      volume: num(input.volume),
-      quoteVolume: num(input.quoteVolume),
-      eventTime: num(input.closeTime),
+      last: mini ? input.c : input.lastPrice,
+      open: mini ? input.o : input.openPrice,
+      high: mini ? input.h : input.highPrice,
+      low: mini ? input.l : input.lowPrice,
+      volume: mini ? input.v : input.volume,
+      quoteVolume: mini ? input.q : input.quoteVolume,
+      eventTime: mini ? input.E ?? 0 : input.closeTime ?? 0,
     };
   }
 }

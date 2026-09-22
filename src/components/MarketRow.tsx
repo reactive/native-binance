@@ -3,7 +3,7 @@ import { Badge, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { memo, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 
-import { formatLast, formatPercent } from '@/components/formatMarket';
+import { decimalsOf, formatPercent, formatPrice } from '@/components/formatMarket';
 import { MarketSymbol } from '@/resources/Symbol';
 import { Ticker } from '@/resources/Ticker';
 
@@ -33,7 +33,8 @@ export const MarketRow = memo(function MarketRow({
     return <View style={[styles.row, { borderBottomColor: color.borderSubtle }]} />;
   }
 
-  const price = ticker ? formatLast(ticker.last, instrument.tickSize) : '';
+  const price =
+    ticker ? formatPrice(ticker.last, instrument.pricePlaces ?? decimalsOf(ticker.last)) : '';
   const percent = ticker ? formatPercent(ticker.percent) : '';
   const halted = instrument.status !== 'TRADING';
   const direction = !ticker ? 0 : ticker.percent > 0 ? 1 : ticker.percent < 0 ? -1 : 0;
