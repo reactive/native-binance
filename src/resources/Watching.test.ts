@@ -118,10 +118,10 @@ function fetchWatched(
   });
 }
 
-/** `useSuspense(getWatching)` resolves on a microtask after the first render. */
+/** `getWatching` settles on a timer so the first lazy-route render can commit. */
 async function paint() {
   await act(async () => {
-    await Promise.resolve();
+    await new Promise(resolve => setTimeout(resolve, 0));
   });
 }
 
