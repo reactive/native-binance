@@ -175,6 +175,7 @@ function Segments({
           key={item}
           testID={`segment-${item.toLowerCase()}`}
           accessibilityRole="tab"
+          aria-selected={item === segment}
           accessibilityState={{ selected: item === segment }}
           onPress={() => onSelect(item)}
           style={styles.segment}
