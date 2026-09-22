@@ -5,6 +5,7 @@ import { useState, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { InstrumentInfo } from '@/components/InstrumentInfo';
 import OrderBookView from '@/components/OrderBookView';
 import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/formatMarket';
 import { getOrderBook } from '@/resources/OrderBook';
@@ -224,6 +225,16 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
             }
           >
             <LiveBook symbol={symbol} />
+          </AsyncBoundary>
+        : segment === 'Info' ?
+          <AsyncBoundary
+            fallback={
+              <Text tone="secondary" testID="info-loading">
+                Loading {symbol}
+              </Text>
+            }
+          >
+            <InstrumentInfo symbol={symbol} />
           </AsyncBoundary>
         : null}
       </View>
