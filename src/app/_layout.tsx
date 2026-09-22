@@ -1,3 +1,5 @@
+import 'expo-sqlite/localStorage/install';
+
 import { DataProvider, getDefaultManagers } from '@data-client/react';
 import { SilkProvider } from '@reactive/silk-native';
 import { Stack } from 'expo-router';
