@@ -1,6 +1,7 @@
 import { Entity, RestEndpoint } from '@data-client/rest';
 
 import { BINANCE_REST, binanceGetInit } from './hosts';
+import { Ticker } from './Ticker';
 
 export type InstrumentFilters = {
   readonly tickSize: string;
@@ -73,6 +74,7 @@ export class MarketSymbol extends Entity {
   baseAsset = '';
   quoteAsset = '';
   filters: InstrumentFilters = EMPTY_FILTERS;
+  ticker: Ticker | undefined = undefined;
 
   pk(): string {
     return this.symbol;
@@ -82,7 +84,15 @@ export class MarketSymbol extends Entity {
 
   static schema = {
     filters: instrumentFilters,
+    ticker: Ticker,
   };
+
+  /** Copy the symbol id onto `ticker` so a later ticker write joins here. */
+  static process(input: { symbol?: string }) {
+    const symbol = String(input.symbol ?? '').toUpperCase();
+    if (!symbol) throw new Error('Invalid symbol');
+    return { ...input, symbol, ticker: symbol };
+  }
 
   get tickSize(): string {
     return this.filters.tickSize;

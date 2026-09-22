@@ -86,12 +86,13 @@ it('leaves price places unset when PRICE_FILTER is missing', () => {
 it('keeps the stored symbol raw', () => {
   const { controller } = renderDataHook(() => useSymbols(), { initialFixtures: fixtures });
   const stored = controller.getState().entities.Symbol?.BTCUSDT as
-    | { filters?: { tickSize?: string }[] }
+    | { filters?: { tickSize?: string }[]; ticker?: unknown }
     | undefined;
   if (!stored) throw new Error('missing BTCUSDT');
   expect(Array.isArray(stored.filters)).toBe(true);
   expect('tickSize' in stored).toBe(false);
   expect(stored.filters?.[0]?.tickSize).toBe('0.01000000');
+  expect(stored.ticker).toBe('BTCUSDT');
 });
 
 it('asks exchange info to skip permission sets', () => {

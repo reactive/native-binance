@@ -19,14 +19,22 @@ function Markets(): JSX.Element {
   useSuspense(getExchangeInfo);
   const [quote, setQuote] = useState('USDT');
   const [sort, setSort] = useState<MarketSort>('volume');
+  const [query, setQuery] = useState('');
 
   return (
     <View style={styles.body}>
       <AsyncBoundary fallback={null}>
         <TickerFeed />
       </AsyncBoundary>
-      <MarketsChrome quote={quote} sort={sort} onQuote={setQuote} onSort={setSort} />
-      <MarketList quote={quote} sort={sort} />
+      <MarketsChrome
+        quote={quote}
+        sort={sort}
+        query={query}
+        onQuote={setQuote}
+        onSort={setSort}
+        onQuery={setQuery}
+      />
+      <MarketList quote={quote} sort={sort} query={query} />
     </View>
   );
 }

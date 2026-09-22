@@ -1,5 +1,5 @@
 import { useQuery } from '@data-client/react';
-import { Heading, Text, useTheme } from '@reactive/silk-native';
+import { Heading, Input, Text, useTheme } from '@reactive/silk-native';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, type JSX } from 'react';
 import {
@@ -13,11 +13,7 @@ import {
 
 import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
 import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
-import {
-  getMarketNames,
-  getMarkets,
-  type MarketSort,
-} from '@/resources/Markets';
+import { getMarkets, type MarketSort } from '@/resources/Markets';
 
 const QUOTES = ['USDT', 'USDC', 'FDUSD', 'BTC', 'ETH'] as const;
 const SORTS: readonly { id: MarketSort; label: string }[] = [
@@ -72,25 +68,43 @@ function getItemLayout(_: ArrayLike<string> | null | undefined, index: number) {
 export function MarketsChrome({
   quote,
   sort,
+  query,
   onQuote,
   onSort,
+  onQuery,
 }: {
   quote: string;
   sort: MarketSort;
+  query: string;
   onQuote: (quote: string) => void;
   onSort: (sort: MarketSort) => void;
+  onQuery: (query: string) => void;
 }): JSX.Element {
   const { theme } = useTheme();
   const line = theme.semantic.color.borderSubtle;
   return (
     <View>
       <View style={styles.title}>
-        <Heading level="1" size="md" testID="markets-title">
+        <Heading level="1" size="md" numberOfLines={1} testID="markets-title">
           Markets
         </Heading>
+        <Input
+          size="sm"
+          value={query}
+          onChangeText={onQuery}
+          placeholder="Find a symbol"
+          accessibilityLabel="Find a symbol"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="off"
+          spellCheck={false}
+          testID="market-search"
+          style={styles.search}
+        />
       </View>
       <ScrollView
         horizontal
+        keyboardShouldPersistTaps="handled"
         showsHorizontalScrollIndicator={false}
         style={styles.quotes}
         contentContainerStyle={styles.quotesContent}
@@ -123,22 +137,23 @@ export function MarketsChrome({
 export function MarketList({
   quote,
   sort,
+  query,
 }: {
   quote: string;
   sort: MarketSort;
+  query: string;
 }): JSX.Element {
-  const args = useMemo(() => ({ quote, sort }), [quote, sort]);
-  const priced = useQuery(getMarkets, args);
-  const named = useQuery(getMarketNames, { quote });
-  const rows = priced ?? named ?? [];
+  const q = query.trim().toLowerCase();
+  const args = useMemo(() => ({ quote, sort, q }), [quote, sort, q]);
+  const rows = useQuery(getMarkets, args) ?? [];
   const volumesReady =
-    priced != null && priced.length > 0 && priced.every(row => row.ticker != null);
-  const liveIds = useMemo(() => rows.map(row => row.symbol.symbol), [rows]);
+    rows.length > 0 && rows.every(row => row.ticker != null || row.status !== 'TRADING');
+  const liveIds = useMemo(() => rows.map(row => row.symbol), [rows]);
   const liveRef = useRef(liveIds);
   liveRef.current = liveIds;
 
   const [hold, dispatch] = useReducer(holdOrder, idleHold);
-  const argsKey = `${quote}:${sort}`;
+  const argsKey = `${quote}:${sort}:${q}`;
   const argsSeen = useRef(argsKey);
   if (argsSeen.current !== argsKey) {
     argsSeen.current = argsKey;
@@ -174,17 +189,25 @@ export function MarketList({
       onPointerUp={releaseFinger}
       onPointerCancel={releaseFinger}
     >
-      <FlatList
-        testID="markets"
-        data={ids}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        initialNumToRender={12}
-        maxToRenderPerBatch={12}
-        windowSize={7}
-        showsVerticalScrollIndicator={false}
-      />
+      {ids.length === 0 ?
+        <Text tone="secondary" testID="markets-empty" style={styles.empty}>
+          No markets match
+        </Text>
+      : <FlatList
+          // Quote, query, and sort start at the top. This key stays put while a symbol is open, so the offset is still here on the way back.
+          key={argsKey}
+          testID="markets"
+          data={ids}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          getItemLayout={getItemLayout}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          showsVerticalScrollIndicator={false}
+        />
+      }
     </View>
   );
 }
@@ -196,8 +219,17 @@ function keyExtractor(symbol: string): string {
 const styles = StyleSheet.create({
   title: {
     height: TITLE_HEIGHT,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: GUTTER,
+    gap: 12,
+  },
+  search: {
+    flex: 1,
+  },
+  empty: {
+    paddingHorizontal: GUTTER,
+    paddingTop: 12,
   },
   quotes: {
     height: QUOTE_HEIGHT,
