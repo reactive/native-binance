@@ -1,6 +1,7 @@
 import { Entity, RestEndpoint } from '@data-client/rest';
 
 import { BINANCE_REST, binanceGetInit } from './hosts';
+import { Ticker } from './Ticker';
 
 type Filter = {
   filterType?: string;
@@ -30,12 +31,17 @@ export class MarketSymbol extends Entity {
   tickSize = '';
   stepSize = '';
   minNotional = '';
+  ticker: Ticker | undefined = undefined;
 
   pk(): string {
     return this.symbol;
   }
 
   static key = 'Symbol';
+
+  static schema = {
+    ticker: Ticker,
+  };
 
   static process(input: {
     symbol?: string;
@@ -56,6 +62,7 @@ export class MarketSymbol extends Entity {
       minNotional:
         filterField(input.filters, 'NOTIONAL', 'minNotional') ||
         filterField(input.filters, 'MIN_NOTIONAL', 'minNotional'),
+      ticker: symbol,
     };
   }
 }

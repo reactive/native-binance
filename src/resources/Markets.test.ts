@@ -2,7 +2,7 @@ import { useQuery } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 import { act } from 'react';
 
-import { getMarketNames, getMarkets, type MarketQuote } from './Markets';
+import { getMarkets } from './Markets';
 import { getExchangeInfo, MarketSymbol } from './Symbol';
 import { getTickers, Ticker } from './Ticker';
 import { readMiniTickers } from './TickerStream';
@@ -65,8 +65,8 @@ const tickers = [
   ticker('BTCUSDC', '101', '100', '80', 1_000),
 ];
 
-function ids(rows: MarketQuote[] | undefined) {
-  return rows?.map(row => row.symbol.symbol);
+function ids(rows: { symbol: string }[] | undefined) {
+  return rows?.map(row => row.symbol);
 }
 
 function useLists() {
@@ -75,7 +75,6 @@ function useLists() {
     change: useQuery(getMarkets, { quote: 'USDT', sort: 'change' as const }),
     name: useQuery(getMarkets, { quote: 'USDT', sort: 'name' as const }),
     usdc: useQuery(getMarkets, { quote: 'USDC', sort: 'volume' as const }),
-    names: useQuery(getMarketNames, { quote: 'USDT' }),
     btc: useQuery(MarketSymbol, { symbol: 'BTCUSDT' }),
     bnb: useQuery(MarketSymbol, { symbol: 'BNBBTC' }),
     btcTicker: useQuery(Ticker, { symbol: 'BTCUSDT' }),
@@ -103,6 +102,7 @@ it('lists trading quotes by volume, change, and name', () => {
   expect(ids(result.current.change)).toEqual(['ETHUSDT', 'BTCUSDT', 'ADAUSDT']);
   expect(ids(result.current.name)).toEqual(['ADAUSDT', 'BTCUSDT', 'ETHUSDT']);
   expect(ids(result.current.usdc)).toEqual(['BTCUSDC']);
+  expect(result.current.volume?.[0]?.ticker?.quoteVolume).toBe(50);
   expect(result.current.btcTicker?.percent).toBeCloseTo(0.01);
 });
 
@@ -110,13 +110,22 @@ it('shows symbol names before any ticker exists', () => {
   const { result } = renderDataHook(() => useLists(), {
     initialFixtures: [{ endpoint: getExchangeInfo, args: [], response: exchange }],
   });
-  expect(result.current.volume).toBeUndefined();
-  expect(result.current.names?.map(row => row.symbol.symbol)).toEqual([
-    'BTCUSDT',
-    'ETHUSDT',
-    'ADAUSDT',
-  ]);
-  expect(result.current.names?.every(row => row.ticker == null)).toBe(true);
+  expect(ids(result.current.volume)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
+  expect(result.current.volume?.every(row => row.ticker == null)).toBe(true);
+});
+
+it('sorts on the joined ticker once it is written', async () => {
+  const { result, controller } = renderDataHook(
+    () => useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const }),
+    { initialFixtures: [{ endpoint: getExchangeInfo, args: [], response: exchange }] },
+  );
+  expect(ids(result.current)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
+  expect(result.current?.[0]?.ticker).toBeUndefined();
+
+  await setTicker(controller, ticker('ADAUSDT', '1', '1', '90', 1));
+  expect(ids(result.current)?.[0]).toBe('ADAUSDT');
+  expect(result.current?.[0]?.ticker?.quoteVolume).toBe(90);
+  expect(result.current?.[1]?.ticker).toBeUndefined();
 });
 
 function setTicker(
@@ -197,7 +206,6 @@ it('filters on this phone and keeps a halted symbol out of the default list', ()
       none: useQuery(getMarkets, { quote: 'USDT', q: 'zzzz' }),
       cleared: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const, q: '' }),
       usdc: useQuery(getMarkets, { quote: 'USDC', sort: 'volume' as const, q: 'eth' }),
-      names: useQuery(getMarketNames, { quote: 'USDT', q: 'sol' }),
     }),
     {
       initialFixtures: [
@@ -213,14 +221,13 @@ it('filters on this phone and keeps a halted symbol out of the default list', ()
   expect(ids(result.current.ethChange)).toEqual(['ETHUSDT', 'ETHFIUSDT']);
   expect(ids(result.current.symbolMatch)).toEqual(['BTCUSDT']);
   expect(ids(result.current.sol)).toEqual(['SOLUSDT']);
-  expect(result.current.sol?.[0]?.symbol.status).toBe('HALT');
-  expect(result.current.luna?.[0]?.symbol.status).toBe('BREAK');
+  expect(result.current.sol?.[0]?.status).toBe('HALT');
+  expect(result.current.luna?.[0]?.status).toBe('BREAK');
   expect(ids(result.current.none)).toEqual([]);
   expect(ids(result.current.cleared)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'ETHFIUSDT']);
   expect(ids(result.current.cleared)).not.toContain('SOLUSDT');
   expect(ids(result.current.cleared)).not.toContain('LUNAUSDT');
   expect(ids(result.current.usdc)).toEqual([]);
-  expect(ids(result.current.names)).toEqual(['SOLUSDT']);
 });
 
 it('reads a mini-ticker array', () => {

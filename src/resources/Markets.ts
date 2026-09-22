@@ -12,16 +12,6 @@ export type MarketArgs = {
   sort?: MarketSort;
 };
 
-export type MarketQuote = {
-  symbol: MarketSymbol;
-  ticker: Ticker | undefined;
-};
-
-const schema = {
-  symbols: new All(MarketSymbol),
-  tickers: new All(Ticker),
-};
-
 function readArgs(arg: MarketArgs | undefined): { quote: string; sort: MarketSort; q: string } {
   return {
     quote: arg?.quote ?? 'USDT',
@@ -44,42 +34,30 @@ function volumeOf(ticker: Ticker | undefined): number {
   return ticker ? ticker.quoteVolume : Number.NEGATIVE_INFINITY;
 }
 
-function compareMarket(a: MarketQuote, b: MarketQuote, sort: MarketSort): number {
+function compareMarket(a: MarketSymbol, b: MarketSymbol, sort: MarketSort): number {
   if (sort === 'name') {
-    const byBase = a.symbol.baseAsset.localeCompare(b.symbol.baseAsset);
+    const byBase = a.baseAsset.localeCompare(b.baseAsset);
     if (byBase !== 0) return byBase;
-    return a.symbol.quoteAsset.localeCompare(b.symbol.quoteAsset);
+    return a.quoteAsset.localeCompare(b.quoteAsset);
   }
   if (sort === 'change') return changeOf(b.ticker) - changeOf(a.ticker);
   return volumeOf(b.ticker) - volumeOf(a.ticker);
 }
 
-function trading(
-  symbols: readonly MarketSymbol[],
-  tickers: readonly Ticker[],
-  arg: MarketArgs | undefined,
-): MarketQuote[] {
+function trading(symbols: readonly MarketSymbol[], arg: MarketArgs | undefined): MarketSymbol[] {
   const { quote, sort, q } = readArgs(arg);
-  const byMarketSymbol = new Map<string, Ticker>();
-  for (const ticker of tickers) byMarketSymbol.set(ticker.symbol, ticker);
-  const rows: MarketQuote[] = [];
+  const rows: MarketSymbol[] = [];
   for (const symbol of symbols) {
     if (symbol.quoteAsset !== quote || !matchesQuery(symbol, q)) continue;
     // Halted and paused symbols stay out of the default list. A search that hits one includes it.
     if (!q && symbol.status !== 'TRADING') continue;
-    rows.push({ symbol, ticker: byMarketSymbol.get(symbol.symbol) });
+    rows.push(symbol);
   }
   rows.sort((a, b) => compareMarket(a, b, sort));
   return rows;
 }
 
-/** `All` is invalid until that entity table exists. Names use symbols alone so the list can paint before the first ticker write. */
-export const getMarkets = new Query(
-  schema,
-  (input: { symbols: MarketSymbol[]; tickers: Ticker[] }, arg?: MarketArgs) =>
-    trading(input.symbols, input.tickers, arg),
-);
-
-export const getMarketNames = new Query(new All(MarketSymbol), (symbols: MarketSymbol[], arg?: MarketArgs) =>
-  trading(symbols, [], arg),
+/** Names paint from `All(MarketSymbol)` while `ticker` is still undefined. */
+export const getMarkets = new Query(new All(MarketSymbol), (symbols: MarketSymbol[], arg?: MarketArgs) =>
+  trading(symbols, arg),
 );

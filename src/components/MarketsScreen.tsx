@@ -13,11 +13,7 @@ import {
 
 import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
 import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
-import {
-  getMarketNames,
-  getMarkets,
-  type MarketSort,
-} from '@/resources/Markets';
+import { getMarkets, type MarketSort } from '@/resources/Markets';
 
 const QUOTES = ['USDT', 'USDC', 'FDUSD', 'BTC', 'ETH'] as const;
 const SORTS: readonly { id: MarketSort; label: string }[] = [
@@ -149,14 +145,10 @@ export function MarketList({
 }): JSX.Element {
   const q = query.trim().toLowerCase();
   const args = useMemo(() => ({ quote, sort, q }), [quote, sort, q]);
-  const priced = useQuery(getMarkets, args);
-  const named = useQuery(getMarketNames, args);
-  const rows = priced ?? named ?? [];
+  const rows = useQuery(getMarkets, args) ?? [];
   const volumesReady =
-    priced != null &&
-    priced.length > 0 &&
-    priced.every(row => row.ticker != null || row.symbol.status !== 'TRADING');
-  const liveIds = useMemo(() => rows.map(row => row.symbol.symbol), [rows]);
+    rows.length > 0 && rows.every(row => row.ticker != null || row.status !== 'TRADING');
+  const liveIds = useMemo(() => rows.map(row => row.symbol), [rows]);
   const liveRef = useRef(liveIds);
   liveRef.current = liveIds;
 
