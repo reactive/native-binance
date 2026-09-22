@@ -1,6 +1,7 @@
 import { actionTypes, Controller } from '@data-client/react';
 import type { Manager, Middleware } from '@data-client/react';
 
+import { BINANCE_STREAM } from './hosts';
 import { getOrderBook, OrderBook } from './OrderBook';
 
 type DepthUpdate = {
@@ -11,10 +12,8 @@ type DepthUpdate = {
   a: unknown;
 };
 
-const STREAM_HOST = 'wss://data-stream.binance.vision/ws';
-
 function streamUrl(symbol: string) {
-  return `${STREAM_HOST}/${symbol.toLowerCase()}@depth@100ms`;
+  return `${BINANCE_STREAM}/${symbol.toLowerCase()}@depth@100ms`;
 }
 
 function symbolFrom(args: readonly unknown[] | undefined): string {
