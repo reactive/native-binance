@@ -60,6 +60,8 @@ export default class OrderBookStream implements Manager {
   private readonly resyncing = new Set<string>();
   private readonly resyncFailures = new Map<string, number>();
   private readonly resyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Last id applied. `getState()` lags the reducer, so the gap check cannot re-read the book. */
+  private readonly heads = new Map<string, number>();
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -86,7 +88,13 @@ export default class OrderBookStream implements Manager {
       ) {
         await next(action);
         const symbol = symbolFrom(action.args);
-        if (symbol) this.enqueue(symbol, () => this.flush(symbol));
+        if (symbol) {
+          const raw = (action as { response?: { lastUpdateId?: unknown } }).response
+            ?.lastUpdateId;
+          const id = Number(raw);
+          if (Number.isFinite(id)) this.heads.set(symbol, id);
+          this.enqueue(symbol, () => this.flush(symbol));
+        }
         return;
       }
 
@@ -101,6 +109,7 @@ export default class OrderBookStream implements Manager {
     this.sockets.clear();
     this.counts.clear();
     this.buffers.clear();
+    this.heads.clear();
     this.resyncing.clear();
     this.resyncFailures.clear();
   }
@@ -121,6 +130,7 @@ export default class OrderBookStream implements Manager {
     }
     this.counts.delete(symbol);
     this.buffers.delete(symbol);
+    this.heads.delete(symbol);
     this.disconnect(symbol);
   }
 
@@ -169,30 +179,35 @@ export default class OrderBookStream implements Manager {
     );
   }
 
-  /** Hand each diff to the entity. Merge applies it; a refused newer id is a gap. */
+  /** Hand each diff to the entity. An id past the last applied update is a gap. */
   private async flush(symbol: string) {
     const buffer = this.buffers.get(symbol);
-    if (!buffer?.length || !this.book(symbol)) return;
+    if (!buffer?.length) return;
+    let head = this.heads.get(symbol);
+    if (head == null) {
+      const book = this.book(symbol);
+      if (!book) return;
+      head = book.lastUpdateId;
+      this.heads.set(symbol, head);
+    }
 
     const pending = buffer.splice(0, buffer.length);
     for (let i = 0; i < pending.length; i++) {
       const event = pending[i];
-      const before = this.book(symbol);
-      if (!before) {
-        buffer.unshift(...pending.slice(i));
-        return;
-      }
-      await this.controller.set(OrderBook, { symbol }, event);
-      const after = this.book(symbol);
-      if (
-        after &&
-        event.u > before.lastUpdateId &&
-        after.lastUpdateId === before.lastUpdateId
-      ) {
+      if (event.u <= head) continue;
+      if (event.U > head + 1) {
         buffer.unshift(...pending.slice(i));
         this.resync(symbol);
         return;
       }
+      await this.controller.set(OrderBook, { symbol }, event);
+      const latest = this.heads.get(symbol);
+      if (latest != null && latest > event.u) {
+        head = latest;
+        continue;
+      }
+      head = event.u;
+      this.heads.set(symbol, head);
     }
   }
 
