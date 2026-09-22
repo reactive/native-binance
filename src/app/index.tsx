@@ -1,6 +1,6 @@
-import { AsyncBoundary, useSuspense } from '@data-client/react';
+import { AsyncBoundary, useController, useSuspense } from '@data-client/react';
 import { Heading, Skeleton, useTheme } from '@reactive/silk-native';
-import { useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -85,6 +85,31 @@ function MarketsLoading(): JSX.Element {
 
 export default function HomeScreen(): JSX.Element {
   const { theme } = useTheme();
+  const controller = useController();
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(() => {
+    // The symbol route is its own bundle. Load it while this screen is online
+    // so opening a market still works after the network drops.
+    void import('./symbol/[symbol]');
+    // A fetch that rejects before DataProvider commits never reaches the reducer,
+    // and NetworkManager keeps that promise, so a later fetch does not run.
+    const timer = setTimeout(() => {
+      const current = controllerRef.current;
+      const state = current.getState();
+      const { data } = current.getResponse(getExchangeInfo, state);
+      const symbols =
+        data && typeof data === 'object' && 'symbols' in data
+          ? ((data as { symbols?: unknown[] }).symbols?.length ?? 0)
+          : 0;
+      if (symbols > 0 || current.getError(getExchangeInfo, state)) return;
+      void Promise.resolve(getExchangeInfo()).then(
+        response => current.setResponse(getExchangeInfo, response),
+        (err: Error) => current.setError(getExchangeInfo, err),
+      );
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, []);
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
       <AsyncBoundary fallback={<MarketsLoading />} errorComponent={MarketsError}>
