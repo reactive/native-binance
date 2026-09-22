@@ -127,3 +127,15 @@ it('reconnects with backoff and refetches klines after the socket opens', async 
   expect(ctrl.fetch).toHaveBeenCalledTimes(1);
   expect(ctrl.fetch).toHaveBeenCalledWith(getCandles, { symbol: 'BTCUSDT', interval: '15m' });
 });
+
+it('catches a rejected kline refetch', async () => {
+  const stream = createStream();
+  const ctrl = controller();
+  ctrl.fetch.mockRejectedValueOnce(new Error('offline'));
+  await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, { symbol: 'BTCUSDT', interval: '15m' });
+  FakeSocket.instances[0].close();
+  jest.advanceTimersByTime(500);
+  FakeSocket.instances[1].open();
+  await Promise.resolve();
+  expect(ctrl.fetch).toHaveBeenCalledTimes(1);
+});

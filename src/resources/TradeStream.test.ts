@@ -208,6 +208,20 @@ it('drops a scheduled flush after unsubscribe', async () => {
   }
 });
 
+it('catches a rejected tape snapshot', async () => {
+  const { sockets, dispatch, fetch, stream, restore } = harness();
+  fetch.mockRejectedValueOnce(new Error('offline'));
+  try {
+    await dispatch(subscribe('BTCUSDT'));
+    sockets[0].onopen?.();
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledWith(getTrades, { symbol: 'BTCUSDT' });
+  } finally {
+    stream.cleanup();
+    restore();
+  }
+});
+
 it('closes only the symbol that was unsubscribed', async () => {
   const { sockets, dispatch, stream, restore } = harness();
   try {

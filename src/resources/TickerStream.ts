@@ -98,7 +98,11 @@ export default class TickerStream implements Manager {
         mergeTickerRows(this.pending, rows);
         this.flush();
       },
-      onOpen: () => {},
+      onOpen: reopened => {
+        if (!reopened) return;
+        // Quiet symbols are absent from `!miniTicker@arr`, so a recovered socket refetches them.
+        void Promise.resolve(this.controller.fetch(getTickers)).catch(() => {});
+      },
     });
     this.sockets.set(TICKER_STREAM, socket);
   }

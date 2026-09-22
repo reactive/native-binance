@@ -53,19 +53,28 @@ function bookFixture(lastUpdateId: number, bid = '100', ask = '101') {
 async function mount(snapshotId = 100) {
   FakeSocket.instances = [];
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
-  let releaseSnapshot: (value: {
+  type Snapshot = {
     lastUpdateId: number;
     bids: [string, string][];
     asks: [string, string][];
-  }) => void = () => {};
-  const snapshot = new Promise<{
-    lastUpdateId: number;
-    bids: [string, string][];
-    asks: [string, string][];
-  }>(resolve => {
-    releaseSnapshot = resolve;
-  });
+  };
+  const pending: {
+    resolve: (value: Snapshot) => void;
+    reject: (error: Error) => void;
+  }[] = [];
   let fetches = 0;
+  function releaseSnapshot(value: Snapshot) {
+    const next = pending[0];
+    if (!next) throw new Error('no depth fetch is waiting');
+    pending.shift();
+    next.resolve(value);
+  }
+  function rejectSnapshot(error: Error) {
+    const next = pending[0];
+    if (!next) throw new Error('no depth fetch is waiting');
+    pending.shift();
+    next.reject(error);
+  }
 
   const { result, controller } = renderDataHook(
     () => useSuspense(getOrderBook, { symbol: 'BTCUSDT' }),
@@ -76,7 +85,9 @@ async function mount(snapshotId = 100) {
           endpoint: getOrderBook,
           response() {
             fetches += 1;
-            return snapshot;
+            return new Promise<Snapshot>((resolve, reject) => {
+              pending.push({ resolve, reject });
+            });
           },
         },
       ],
@@ -120,6 +131,14 @@ async function mount(snapshotId = 100) {
     });
   }
 
+  async function unsubscribe() {
+    await handle({
+      type: actionTypes.UNSUBSCRIBE,
+      endpoint: getOrderBook,
+      args: [{ symbol: 'BTCUSDT' }],
+    } as never);
+  }
+
   return {
     result,
     controller,
@@ -127,6 +146,8 @@ async function mount(snapshotId = 100) {
     frame,
     fetches: () => fetches,
     releaseSnapshot,
+    rejectSnapshot,
+    unsubscribe,
     socket: () => FakeSocket.instances.at(-1),
     sockets: () => FakeSocket.instances.length,
   };
@@ -223,6 +244,83 @@ it('resyncs the first diff after reconnect without emptying the book', async () 
     expect(result.current.bestBid).toBe(110);
     expect(seen.every(id => id > 0)).toBe(true);
   } finally {
+    stream.cleanup();
+  }
+});
+
+it('waits out a failed resync instead of refetching on every diff', async () => {
+  const { result, frame, stream, fetches, releaseSnapshot, rejectSnapshot, unsubscribe } =
+    await mount(100);
+  jest.useFakeTimers();
+  try {
+    await frame(diff(120, 124, [['99', '3']]));
+    expect(fetches()).toBe(1);
+    for (let i = 0; i < 19; i++) {
+      jest.advanceTimersByTime(100);
+      await frame(diff(120 + i, 124 + i, [['99', '3']]));
+    }
+    expect(fetches()).toBe(1);
+    expect(result.current.lastUpdateId).toBe(100);
+
+    rejectSnapshot(new TypeError('Failed to fetch'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    jest.advanceTimersByTime(499);
+    await frame(diff(140, 141, [['99', '3']]));
+    expect(fetches()).toBe(1);
+
+    jest.advanceTimersByTime(1);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetches()).toBe(2);
+
+    releaseSnapshot({
+      lastUpdateId: 200,
+      bids: [['100', '1']],
+      asks: [['101', '1']],
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.lastUpdateId).toBe(200);
+
+    await frame(diff(300, 301, [['90', '1']]));
+    expect(fetches()).toBe(3);
+    rejectSnapshot(new TypeError('Failed to fetch'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    jest.advanceTimersByTime(499);
+    expect(fetches()).toBe(3);
+    jest.advanceTimersByTime(1);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetches()).toBe(4);
+  } finally {
+    jest.useRealTimers();
+    stream.cleanup();
+  }
+});
+
+it('clears a resync backoff when the book unsubscribes', async () => {
+  const { frame, stream, fetches, rejectSnapshot, unsubscribe } = await mount(100);
+  jest.useFakeTimers();
+  try {
+    await frame(diff(120, 124));
+    expect(fetches()).toBe(1);
+    rejectSnapshot(new TypeError('Failed to fetch'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await unsubscribe();
+    jest.advanceTimersByTime(10_000);
+    expect(fetches()).toBe(1);
+  } finally {
+    jest.useRealTimers();
     stream.cleanup();
   }
 });

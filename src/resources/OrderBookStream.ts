@@ -58,6 +58,8 @@ export default class OrderBookStream implements Manager {
   private readonly sockets = new Map<string, LiveSocket>();
   private readonly tails = new Map<string, Promise<void>>();
   private readonly resyncing = new Set<string>();
+  private readonly resyncFailures = new Map<string, number>();
+  private readonly resyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -93,11 +95,14 @@ export default class OrderBookStream implements Manager {
   };
 
   cleanup() {
+    for (const timer of this.resyncTimers.values()) clearTimeout(timer);
+    this.resyncTimers.clear();
     for (const socket of this.sockets.values()) socket.close();
     this.sockets.clear();
     this.counts.clear();
     this.buffers.clear();
     this.resyncing.clear();
+    this.resyncFailures.clear();
   }
 
   private subscribe(symbol: string) {
@@ -120,6 +125,11 @@ export default class OrderBookStream implements Manager {
   }
 
   private disconnect(symbol: string) {
+    const timer = this.resyncTimers.get(symbol);
+    if (timer) clearTimeout(timer);
+    this.resyncTimers.delete(symbol);
+    this.resyncFailures.delete(symbol);
+    this.resyncing.delete(symbol);
     const socket = this.sockets.get(symbol);
     this.sockets.delete(symbol);
     socket?.close();
@@ -188,12 +198,31 @@ export default class OrderBookStream implements Manager {
 
   /** Snapshot again so buffered diffs can bridge `lastUpdateId`. */
   private resync(symbol: string) {
-    if (this.resyncing.has(symbol) || !this.counts.has(symbol)) return;
+    if (
+      this.resyncing.has(symbol) ||
+      this.resyncTimers.has(symbol) ||
+      !this.counts.has(symbol)
+    ) {
+      return;
+    }
     this.resyncing.add(symbol);
-    void Promise.resolve(this.controller.fetch(getOrderBook, { symbol })).finally(
-      () => {
+    const failures = this.resyncFailures.get(symbol) ?? 0;
+    void Promise.resolve(this.controller.fetch(getOrderBook, { symbol }))
+      .then(() => {
+        this.resyncFailures.set(symbol, 0);
+      })
+      .catch(() => {
+        const delay = Math.min(10_000, 2 ** failures * 500);
+        this.resyncFailures.set(symbol, failures + 1);
+        const timer = setTimeout(() => {
+          this.resyncTimers.delete(symbol);
+          if (!this.counts.has(symbol)) return;
+          this.enqueue(symbol, () => this.flush(symbol));
+        }, delay);
+        this.resyncTimers.set(symbol, timer);
+      })
+      .finally(() => {
         this.resyncing.delete(symbol);
-      },
-    );
+      });
   }
 }
