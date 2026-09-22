@@ -20,7 +20,7 @@ import {
   plotSize,
   READOUT,
 } from '@/components/candleLayout';
-import { formatLast } from '@/components/formatMarket';
+import { decimalsOf, formatPrice } from '@/components/formatMarket';
 import {
   getCandles,
   INTERVALS,
@@ -75,19 +75,19 @@ function CandleReadout({
   useSuspense(getExchangeInfo);
   const instrument = useQuery(MarketSymbol, { symbol });
   const { theme } = useTheme();
-  const tick = instrument?.tickSize ?? '';
+  const places = instrument?.pricePlaces ?? decimalsOf(candle.close);
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
   const closeColor = candle.close > candle.open ? up : candle.close < candle.open ? down : undefined;
 
   return (
     <View style={styles.readout}>
-      <ReadoutItem label="Open" value={formatLast(candle.open, tick)} testID="candle-open" />
-      <ReadoutItem label="High" value={formatLast(candle.high, tick)} testID="candle-high" />
-      <ReadoutItem label="Low" value={formatLast(candle.low, tick)} testID="candle-low" />
+      <ReadoutItem label="Open" value={formatPrice(candle.open, places)} testID="candle-open" />
+      <ReadoutItem label="High" value={formatPrice(candle.high, places)} testID="candle-high" />
+      <ReadoutItem label="Low" value={formatPrice(candle.low, places)} testID="candle-low" />
       <ReadoutItem
         label="Close"
-        value={formatLast(candle.close, tick)}
+        value={formatPrice(candle.close, places)}
         testID="candle-close"
         color={closeColor}
       />
@@ -148,7 +148,7 @@ function CandlePlot({
   const placed = candleLayout(candles, { width, height, ratio });
   const shift = plotDeviceShift(insetTop, insetLeft, ratio);
   const last = candles[candles.length - 1];
-  const tick = instrument?.tickSize ?? '';
+  const places = instrument?.pricePlaces ?? decimalsOf(last.close);
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
   const flat = theme.semantic.color.textSecondary;
@@ -158,7 +158,7 @@ function CandlePlot({
     <View
       testID="candles"
       accessible
-      accessibilityLabel={`${symbol} ${intervalLabel(interval)} candles. Open ${formatLast(last.open, tick)}, high ${formatLast(last.high, tick)}, low ${formatLast(last.low, tick)}, close ${formatLast(last.close, tick)}`}
+      accessibilityLabel={`${symbol} ${intervalLabel(interval)} candles. Open ${formatPrice(last.open, places)}, high ${formatPrice(last.high, places)}, low ${formatPrice(last.low, places)}, close ${formatPrice(last.close, places)}`}
       style={[styles.plot, { width, height }]}
     >
       <View
