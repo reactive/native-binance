@@ -19,6 +19,7 @@ import {
   Animated,
   PixelRatio,
   Platform,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -141,7 +142,12 @@ function IntervalChips({
   onSelect: (interval: CandleInterval) => void;
 }): JSX.Element {
   return (
-    <View style={styles.chips}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.chips}
+      contentContainerStyle={styles.chipRow}
+    >
       {INTERVALS.map(item => {
         const selected = item.value === value;
         return (
@@ -154,7 +160,7 @@ function IntervalChips({
           />
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -934,8 +940,10 @@ const styles = StyleSheet.create({
   },
   chips: {
     height: INTERVAL_ROW,
+    flexGrow: 0,
     flexShrink: 0,
-    flexDirection: 'row',
+  },
+  chipRow: {
     alignItems: 'center',
     paddingHorizontal: PLOT_MARGIN,
     gap: 8,
