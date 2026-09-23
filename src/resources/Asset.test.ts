@@ -7,6 +7,7 @@ import {
   binanceHttps,
   getAssetProfile,
   getAssets,
+  readingPath,
 } from './Asset';
 
 const HOUR = 60 * 60 * 1000;
@@ -83,7 +84,13 @@ it('keeps raw fields, including ones this screen does not read', () => {
         args: [{ symbol: 'SOL' }],
         response: {
           success: true,
-          data: { alias: 'SOL', al: announce, rsu: null, ws: 'https://solana.com' },
+          data: {
+            alias: 'SOL',
+            al: announce,
+            rsu: null,
+            ws: 'https://solana.com',
+            wpu: 'https://bit.ly/MavWhitepaper',
+          },
         },
       },
     ],
@@ -91,9 +98,14 @@ it('keeps raw fields, including ones this screen does not read', () => {
   const stored = controller.getState().entities.Asset?.SOL as { pdTradeDeadline?: unknown; logoUrl?: string };
   expect(stored.logoUrl).toBe('https://example.test/sol.png');
   expect(stored.pdTradeDeadline).toBeNull();
-  const profile = controller.getState().entities.AssetProfile?.SOL as { ws?: string; al?: string };
+  const profile = controller.getState().entities.AssetProfile?.SOL as {
+    ws?: string;
+    al?: string;
+    wpu?: string;
+  };
   expect(profile.al).toBe(announce);
   expect(profile.ws).toBe('https://solana.com');
+  expect(profile.wpu).toBe('https://bit.ly/MavWhitepaper');
 });
 
 it('treats an empty rename and a self-code as no rename', () => {
@@ -278,4 +290,122 @@ it('builds the profile url through tokenInfoUrl', () => {
   const profile = result.current.data as AssetProfile;
   expect(profile.academyUrl).toContain('/academy/');
   expect(profile.researchUrl).toBeUndefined();
+});
+
+function coin(code: string, name: string, tags: string[]) {
+  return Asset.fromJS({ assetCode: code, assetName: name, tags });
+}
+
+function paper(wpu: string | null) {
+  return AssetProfile.fromJS({ alias: 'X', al: null, rsu: null, wpu });
+}
+
+it('builds primers from the kinds the header shows and dedupes a shared article', () => {
+  const sol = coin('SOL', 'Solana', ['Layer1_Layer2', 'pos', 'mining-zone', 'Solana']);
+  expect(sol.lessons.map(lesson => lesson.title)).toEqual([
+    'Layer 1 vs layer 2',
+    'Proof of stake explained',
+  ]);
+  expect(sol.lessons[0]?.url).toBe(
+    'https://www.binance.com/en/academy/articles/blockchain-layer-1-vs-layer-2-scaling-solutions',
+  );
+  const stock = coin('TSLAB', 'Tesla (bStocks)', ['bStocks']);
+  expect(stock.lessons).toEqual([
+    {
+      title: 'What are bStocks?',
+      url: 'https://www.binance.com/en/academy/articles/what-are-bstocks-a-guide-to-tokenized-stocks-on-binance',
+    },
+  ]);
+  const gold = coin('PAXG', 'PAX Gold', ['tCommodities', 'RWA']);
+  expect(gold.kinds).toEqual(['Tokenized commodity', 'Real-world assets']);
+  expect(gold.lessons).toHaveLength(1);
+  expect(gold.lessons[0]?.title).toBe('What are real-world assets?');
+  expect(coin('MTL', 'Metal DAO', ['Infrastructure']).lessons).toEqual([]);
+  expect(coin('FIL', 'Filecoin', ['storage-zone']).lessons).toEqual([]);
+});
+
+it('rejects whitepaper links that are not a document on their own host', () => {
+  const rejected = [
+    'http://www.sandbox.game/The_Sandbox_Whitepaper_2020.pdf',
+    '/',
+    'https://research.binance.com/en/projects/alpine-f1',
+    'https://bit.ly/MavWhitepaper',
+    'https://drive.google.com/drive/folders/1W2m-Fj4e11W23P4FIjJiVbsSvDMV1rZF?usp=drive_link',
+    'https://example.com/a b',
+    'https://a@b.example/x',
+    'https://b.example:8443/x',
+    'https://192.168.0.1/x',
+    'https://[::1]/x',
+  ];
+  for (const wpu of rejected) {
+    expect(paper(wpu).whitepaperUrl).toBeUndefined();
+    expect(paper(wpu).whitepaperHost).toBeUndefined();
+  }
+  const pass = paper('https://www.solana.com/solana-whitepaper.pdf');
+  expect(pass.whitepaperUrl).toBe('https://www.solana.com/solana-whitepaper.pdf');
+  expect(pass.whitepaperHost).toBe('solana.com');
+  const file = paper('https://drive.google.com/file/d/abc/view');
+  expect(file.whitepaperHost).toBe('drive.google.com');
+  expect(paper('https://cdn.jsdelivr.net/gh/0glabs/0g-doc/static/whitepaper.pdf').whitepaperHost).toBe(
+    'cdn.jsdelivr.net',
+  );
+});
+
+it('orders the path and drops the second concept under a caution', () => {
+  const sol = coin('SOL', 'Solana', ['Layer1_Layer2', 'pos']);
+  const full = paper('https://solana.com/solana-whitepaper.pdf');
+  full.al = 'https://www.binance.com/en/academy/articles/what-is-solana-sol';
+  full.rsu = 'https://www.binance.com/en/research/projects/solana';
+  expect(readingPath(sol, full).map(row => row.testID)).toEqual([
+    'asset-academy',
+    'asset-concept-1',
+    'asset-concept-2',
+    'asset-research',
+    'asset-whitepaper',
+  ]);
+  const zero = Asset.fromJS({
+    assetCode: '0G',
+    assetName: '0G',
+    tags: ['Layer1_Layer2', 'Seed', 'AI'],
+  });
+  const links = AssetProfile.fromJS({
+    alias: '0G',
+    al: 'https://www.binance.com/en/academy/articles/what-is-0g-0g',
+    rsu: 'https://www.binance.com/en/research/projects/0g',
+    wpu: 'https://cdn.jsdelivr.net/gh/0glabs/0g-doc/static/whitepaper.pdf',
+  });
+  expect(readingPath(zero, links).map(row => row.line1)).toEqual([
+    'What is 0G?',
+    'Layer 1 vs layer 2',
+    '0G research',
+    '0G whitepaper',
+  ]);
+  expect(readingPath(sol, null).map(row => row.testID)).toEqual([
+    'asset-concept-1',
+    'asset-concept-2',
+  ]);
+});
+
+it('aborts token-info after 10 seconds', async () => {
+  jest.useFakeTimers({ doNotFake: ['Date'] });
+  const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+    return new Promise((_resolve, reject) => {
+      const signal = (init as RequestInit | undefined)?.signal;
+      signal?.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      });
+    });
+  });
+  try {
+    const pending = getAssetProfile({ symbol: 'SOL' });
+    const failed = expect(pending).rejects.toThrow('token-info timed out');
+    await jest.advanceTimersByTimeAsync(9999);
+    await jest.advanceTimersByTimeAsync(1);
+    await failed;
+  } finally {
+    fetchSpy.mockRestore();
+    jest.useRealTimers();
+  }
 });
