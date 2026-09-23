@@ -1,8 +1,9 @@
 import { useQuery, useSuspense } from '@data-client/react';
 import { Badge, Text, useTheme } from '@reactive/silk-native';
 import type { JSX, ReactNode } from 'react';
-import { StyleSheet, View, type TextStyle } from 'react-native';
+import { ScrollView, StyleSheet, View, type TextStyle } from 'react-native';
 
+import { AssetSection } from '@/components/AssetInfo';
 import { trimDecimal } from '@/components/formatMarket';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 
@@ -83,7 +84,7 @@ export function InstrumentInfo({ symbol }: { symbol: string }): JSX.Element {
     );
 
   return (
-    <View testID="instrument-info">
+    <ScrollView testID="instrument-info" style={styles.scroll}>
       <InfoRow
         testID="info-status"
         valueTestID="info-status-value"
@@ -136,11 +137,15 @@ export function InstrumentInfo({ symbol }: { symbol: string }): JSX.Element {
         lined={false}
         line={line}
       />
-    </View>
+      <AssetSection base={instrument.baseAsset} line={line} />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
   message: {
     paddingHorizontal: GUTTER,
     paddingTop: GUTTER,
