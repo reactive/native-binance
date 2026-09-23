@@ -120,7 +120,15 @@ export default function TradeTape({ symbol }: TradeTapeProps): JSX.Element {
             onPress={jumpToLatest}
             style={styles.chipHit}
           >
-            <View style={[styles.pill, { backgroundColor: color.tones.neutral.subtleActive }]}>
+            <View
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: color.tones.neutral.subtleActive,
+                  borderRadius: theme.semantic.radius.full,
+                },
+              ]}
+            >
               <Text role="label">New trades</Text>
             </View>
           </Pressable>
@@ -140,7 +148,7 @@ const styles = StyleSheet.create({
   },
   empty: {
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingTop: 12,
   },
   chipDock: {
     position: 'absolute',
@@ -156,7 +164,6 @@ const styles = StyleSheet.create({
   pill: {
     height: 32,
     paddingHorizontal: 12,
-    borderRadius: 9999,
     alignItems: 'center',
     justifyContent: 'center',
   },

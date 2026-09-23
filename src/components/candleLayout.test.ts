@@ -32,6 +32,18 @@ it('shifts the device layer onto the pixel grid at ratio 3.75', () => {
   expect(plotDeviceShift(48, 0, 3.75)).toEqual({ x: 0, y: 0 });
 });
 
+it('keeps the series inside the 20px bands', () => {
+  const layout = candleLayout([{ open: 1, high: 10, low: 0, close: 2 }], {
+    width: 360,
+    height: 521,
+    ratio: 3.75,
+  });
+  expect(layout[0].wickTop).toBeCloseTo(20, 5);
+  const bottom = layout[0].wickTop + layout[0].wickHeight;
+  expect(bottom).toBeGreaterThan(500);
+  expect(bottom).toBeLessThanOrEqual(501.2);
+});
+
 it('keeps a flat series and a doji visible', () => {
   const flat = candleLayout([{ open: 50, high: 50, low: 50, close: 50 }], {
     width: 360,

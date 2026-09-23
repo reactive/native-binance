@@ -12,7 +12,13 @@ export function LoadError({
   return (
     <View style={styles.block}>
       <Text testID="load-error">Couldn’t load {what}.</Text>
-      <Button testID="load-retry" onPress={onRetry} style={styles.retry}>
+      <Button
+        variant="solid"
+        tone="neutral"
+        testID="load-retry"
+        onPress={onRetry}
+        style={styles.retry}
+      >
         Try again
       </Button>
     </View>

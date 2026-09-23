@@ -65,7 +65,7 @@ export function InstrumentInfo({ symbol }: { symbol: string }): JSX.Element {
 
   if (!instrument) {
     return (
-      <Text tone="secondary" testID="info-missing">
+      <Text tone="secondary" testID="info-missing" style={styles.message}>
         No instrument details for {symbol}
       </Text>
     );
@@ -141,6 +141,10 @@ export function InstrumentInfo({ symbol }: { symbol: string }): JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  message: {
+    paddingHorizontal: GUTTER,
+    paddingTop: GUTTER,
+  },
   row: {
     height: ROW_HEIGHT,
     flexDirection: 'row',

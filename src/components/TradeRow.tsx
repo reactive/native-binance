@@ -7,7 +7,8 @@ import type { Places } from '@/components/places';
 import type { Trade } from '@/resources/Trade';
 
 export const TRADE_ROW_HEIGHT = 44;
-const TIME_WIDTH = 72;
+const TIME_WIDTH = 60;
+const MARK_WIDTH = 16;
 const GUTTER = 12;
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
@@ -45,6 +46,15 @@ export const TradeRow = memo(function TradeRow({
         {timeText}
       </Text>
       <Text
+        role="caption"
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[styles.mark, { color: buy ? palette.buy : palette.sell }]}
+      >
+        {buy ? '▲' : '▼'}
+      </Text>
+      <Text
         role="label"
         numberOfLines={1}
         style={[styles.price, TABULAR, { color: buy ? palette.buy : palette.sell }]}
@@ -69,11 +79,16 @@ const styles = StyleSheet.create({
   time: {
     width: TIME_WIDTH,
   },
+  mark: {
+    width: MARK_WIDTH,
+    marginLeft: 4,
+    textAlign: 'center',
+  },
   price: {
     flex: 1,
+    marginLeft: 8,
   },
   size: {
-    flex: 1,
     textAlign: 'right',
   },
 });

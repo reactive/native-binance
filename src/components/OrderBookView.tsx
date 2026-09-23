@@ -196,7 +196,6 @@ export function OrderBookView({
     [barReference, places, palette],
   );
 
-  const hairline = { borderColor: color.borderSubtle };
   const hasAsks = asks.length > 0;
   const hasBids = bids.length > 0;
   const spreadText =
@@ -210,7 +209,7 @@ export function OrderBookView({
   const axis = (
     <View
       testID="spread"
-      style={[styles.axis, styles.hairlineTop, styles.hairlineBottom, hairline]}
+      style={[styles.axis, { backgroundColor: color.tones.neutral.subtle }]}
       accessible
       accessibilityRole="summary"
       accessibilityLabel={`${symbol}, ${spreadText}`}
@@ -306,12 +305,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: ROW_GUTTER,
-  },
-  hairlineTop: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  hairlineBottom: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 });
 

@@ -4,7 +4,6 @@ import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, type JSX } from 'react';
 import {
   FlatList,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -13,6 +12,7 @@ import {
 
 import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
 import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
+import { Pill } from '@/components/Pill';
 import { Reconnecting } from '@/components/Reconnecting';
 import { getMarkets, type MarketSort } from '@/resources/Markets';
 import { TICKER_STREAM } from '@/resources/streams';
@@ -24,41 +24,10 @@ const SORTS: readonly { id: MarketSort; label: string }[] = [
   { id: 'name', label: 'Name' },
 ];
 
-const TITLE_HEIGHT = 48;
+const ROW = 44;
+const FIELD_WIDTH = 172;
 const TICKER_URLS = [TICKER_STREAM];
-const QUOTE_HEIGHT = 40;
-const SORT_HEIGHT = 36;
 const GUTTER = 12;
-
-type ChipProps = {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  testID: string;
-};
-
-function Chip({ label, selected, onPress, testID }: ChipProps): JSX.Element {
-  const { theme } = useTheme();
-  return (
-    <Pressable
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      hitSlop={{ top: 6, bottom: 6 }}
-      style={[
-        styles.chip,
-        selected ?
-          { backgroundColor: theme.semantic.color.tones.neutral.subtleActive }
-        : null,
-      ]}
-    >
-      <Text role="label" tone={selected ? 'primary' : 'secondary'}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
 
 function openBook(symbol: string) {
   router.push(`/symbol/${symbol}` as Href);
@@ -94,10 +63,11 @@ export function MarketsChrome({
   return (
     <View>
       <View style={styles.title}>
-        <Heading level="1" size="md" numberOfLines={1} testID="markets-title">
+        <Heading level="1" size="md" numberOfLines={1} testID="markets-title" style={styles.brand}>
           Markets
         </Heading>
-        <Reconnecting urls={TICKER_URLS} testID="markets-reconnecting" />
+        <View style={styles.titleGap} />
+        <Reconnecting urls={TICKER_URLS} testID="markets-reconnecting" style={styles.reconnect} />
         <Input
           size="sm"
           value={query}
@@ -120,7 +90,7 @@ export function MarketsChrome({
         contentContainerStyle={styles.quotesContent}
       >
         {showWatching ?
-          <Chip
+          <Pill
             label="Watching"
             selected={watching}
             onPress={onWatching}
@@ -128,7 +98,7 @@ export function MarketsChrome({
           />
         : null}
         {QUOTES.map(item => (
-          <Chip
+          <Pill
             key={item}
             label={item}
             selected={!watching && item === quote}
@@ -139,7 +109,7 @@ export function MarketsChrome({
       </ScrollView>
       <View style={[styles.sorts, { borderBottomColor: line }]}>
         {SORTS.map(item => (
-          <Chip
+          <Pill
             key={item.id}
             label={item.label}
             selected={item.id === sort}
@@ -243,43 +213,46 @@ function keyExtractor(symbol: string): string {
 
 const styles = StyleSheet.create({
   title: {
-    height: TITLE_HEIGHT,
+    height: ROW,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: GUTTER,
-    gap: 12,
+  },
+  brand: {
+    flexShrink: 0,
+  },
+  titleGap: {
+    flex: 1,
+  },
+  reconnect: {
+    marginRight: 8,
   },
   search: {
-    flex: 1,
+    width: FIELD_WIDTH,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   empty: {
     paddingHorizontal: GUTTER,
     paddingTop: 12,
   },
   quotes: {
-    height: QUOTE_HEIGHT,
+    height: ROW,
     flexGrow: 0,
   },
   quotesContent: {
-    height: QUOTE_HEIGHT,
+    height: ROW,
     alignItems: 'center',
     paddingHorizontal: GUTTER,
     gap: 8,
   },
   sorts: {
-    height: SORT_HEIGHT,
+    height: ROW,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: GUTTER,
     gap: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  chip: {
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 9999,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   list: {
     flex: 1,
