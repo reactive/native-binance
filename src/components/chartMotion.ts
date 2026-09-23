@@ -13,15 +13,22 @@ export const easeOut = Easing.bezier(0.4, 0, 1, 1);
 /** Incoming series. cubic-bezier(0, 0, 0.2, 1). */
 export const easeIn = Easing.bezier(0, 0, 0.2, 1);
 
-const INTERVAL_MS: Record<CandleInterval, number> = {
+const DAY = 24 * 60 * 60_000;
+
+/** Months have no fixed length, so they are not in this map. */
+const INTERVAL_MS: Record<Exclude<CandleInterval, '1M'>, number> = {
   '1m': 60_000,
   '15m': 15 * 60_000,
   '1h': 60 * 60_000,
   '4h': 4 * 60 * 60_000,
-  '1d': 24 * 60 * 60_000,
+  '1d': DAY,
+  '1w': 7 * DAY,
 };
 
-export function intervalMs(interval: CandleInterval): number {
+/** Unix epoch is Thursday. Binance weeks open Monday 00:00 UTC. */
+const WEEK_SHIFT = 4 * DAY;
+
+export function intervalMs(interval: Exclude<CandleInterval, '1M'>): number {
   return INTERVAL_MS[interval];
 }
 
@@ -29,9 +36,17 @@ export function intervalLabel(interval: CandleInterval): string {
   return INTERVALS.find(item => item.value === interval)?.label ?? interval;
 }
 
-/** Binance aligns 1m–1d to UTC, which is floor on the unix epoch. */
+/**
+ * Binance aligns 1m–1d to UTC, which is floor on the unix epoch.
+ * Weeks open Monday. Months open on the 1st.
+ */
 export function periodStart(now: number, interval: CandleInterval): number {
-  const ms = INTERVAL_MS[interval];
+  if (interval === '1M') {
+    const date = new Date(now);
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  }
+  const ms = intervalMs(interval);
+  if (interval === '1w') return Math.floor((now - WEEK_SHIFT) / ms) * ms + WEEK_SHIFT;
   return Math.floor(now / ms) * ms;
 }
 

@@ -47,6 +47,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
 import ChartBody from '@/components/ChartBody';
+import { periodStart } from '@/components/chartMotion';
 import { getCandles, upsertCandle, type CandleInterval } from '@/resources/Candle';
 import CandleStream from '@/resources/CandleStream';
 import { installFakeSocket } from '@/resources/testSocket';
@@ -57,17 +58,8 @@ const NOW = Date.parse('2026-09-23T15:04:30.000Z');
 const SYMBOL = 'BTCUSDT';
 const MINUTE = 60_000;
 
-const INTERVAL_MS: Record<CandleInterval, number> = {
-  '1m': MINUTE,
-  '15m': 15 * MINUTE,
-  '1h': 60 * MINUTE,
-  '4h': 4 * 60 * MINUTE,
-  '1d': 24 * 60 * MINUTE,
-};
-
 function period(now: number, interval: CandleInterval): number {
-  const ms = INTERVAL_MS[interval];
-  return Math.floor(now / ms) * ms;
+  return periodStart(now, interval);
 }
 
 function row(openTime: number, close: number): unknown[] {
