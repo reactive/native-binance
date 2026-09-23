@@ -1,6 +1,6 @@
-import { AsyncBoundary, useController, useSuspense } from '@data-client/react';
+import { AsyncBoundary, ErrorBoundary, useController, useSuspense } from '@data-client/react';
 import { Heading, useTheme } from '@reactive/silk-native';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { Suspense, useEffect, useRef, useState, type JSX } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -48,20 +48,22 @@ type ChromeState = {
 
 function MarketsReady({
   watchKey,
-  ...chrome
-}: ChromeState & { watchKey: string }): JSX.Element {
+  quote,
+  sort,
+  query,
+  watching,
+}: Pick<ChromeState, 'quote' | 'sort' | 'query' | 'watching'> & {
+  watchKey: string;
+}): JSX.Element {
   useSuspense(getExchangeInfo);
   return (
-    <>
-      <MarketsChrome {...chrome} />
-      <MarketList
-        quote={chrome.quote}
-        sort={chrome.sort}
-        query={chrome.query}
-        watching={chrome.watching}
-        watchKey={watchKey}
-      />
-    </>
+    <MarketList
+      quote={quote}
+      sort={sort}
+      query={query}
+      watching={watching}
+      watchKey={watchKey}
+    />
   );
 }
 
@@ -91,9 +93,18 @@ function MarketsShell(): JSX.Element {
   return (
     <View style={styles.body}>
       <TickerFeed />
-      <AsyncBoundary fallback={<MarketsPending {...chrome} />} errorComponent={MarketsError}>
-        <MarketsReady {...chrome} watchKey={watchKey} />
-      </AsyncBoundary>
+      <ErrorBoundary fallbackComponent={MarketsError}>
+        <MarketsChrome {...chrome} />
+        <Suspense fallback={<MarketsSkeleton />}>
+          <MarketsReady
+            quote={quote}
+            sort={sort}
+            query={query}
+            watching={watching}
+            watchKey={watchKey}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </View>
   );
 }
@@ -115,10 +126,9 @@ function MarketsError({
   );
 }
 
-function MarketsPending(chrome: ChromeState): JSX.Element {
+function MarketsSkeleton(): JSX.Element {
   return (
-    <View style={styles.body} testID="markets-loading">
-      <MarketsChrome {...chrome} />
+    <View style={styles.list} testID="markets-loading">
       {Array.from({ length: 11 }, (_, index) => (
         <MarketSkeletonRow key={index} />
       ))}
@@ -182,6 +192,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   body: {
+    flex: 1,
+  },
+  list: {
     flex: 1,
   },
   title: {

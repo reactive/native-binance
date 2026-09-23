@@ -123,7 +123,7 @@ function ReadoutItem({
 }): JSX.Element {
   return (
     <View style={styles.readoutItem}>
-      <Text role="caption" tone="secondary">
+      <Text role="caption" tone="secondary" numberOfLines={1}>
         {label}
       </Text>
       <Text
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: PLOT_MARGIN,
   },
   readoutItem: {
-    width: 90,
+    flex: 1,
     minWidth: 0,
     alignItems: 'flex-start',
     justifyContent: 'center',
