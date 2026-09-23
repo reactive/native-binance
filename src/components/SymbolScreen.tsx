@@ -352,11 +352,19 @@ function LiveBook({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
-function streamUrls(symbol: string, segment: Segment, interval: CandleInterval): string[] {
+function streamUrls(
+  symbol: string,
+  segment: Segment,
+  interval: CandleInterval,
+  held: CandleInterval | null,
+): string[] {
   const urls = [TICKER_STREAM];
   if (segment === 'Book') urls.push(depthStream(symbol));
   else if (segment === 'Trades') urls.push(tradeStream(symbol));
-  else if (segment === 'Chart') urls.push(klineStream(symbol, interval));
+  else if (segment === 'Chart') {
+    urls.push(klineStream(symbol, interval));
+    if (held && held !== interval) urls.push(klineStream(symbol, held));
+  }
   return urls;
 }
 
@@ -364,10 +372,11 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   const { theme } = useTheme();
   const [segment, setSegment] = useState<Segment>('Book');
   const [chartInterval, setChartInterval] = useState<CandleInterval>('15m');
+  const [chartHold, setChartHold] = useState<CandleInterval | null>(null);
   const [retry, setRetry] = useState(0);
   const streams = useMemo(
-    () => streamUrls(symbol, segment, chartInterval),
-    [symbol, segment, chartInterval],
+    () => streamUrls(symbol, segment, chartInterval, chartHold),
+    [symbol, segment, chartInterval, chartHold],
   );
   const retryLoad = () => setRetry(count => count + 1);
 
@@ -417,6 +426,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
             onInterval={setChartInterval}
             onRetry={retryLoad}
             retry={retry}
+            onHold={setChartHold}
           />
         : segment === 'Info' ?
           <AsyncBoundary
