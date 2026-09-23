@@ -3,6 +3,7 @@ import type { Controller } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 import { act } from 'react';
 
+import { actWrite } from './testSupport';
 import { getTickers, Ticker } from './Ticker';
 import TickerStream, { mergeTickerRows } from './TickerStream';
 import { FakeSocket, installFakeSocket } from './testSocket';
@@ -44,22 +45,7 @@ it('writes symbols from a batch that arrived while the previous write was in fli
       return Promise.resolve();
     },
   };
-  const sockets: { onmessage: ((event: { data: string }) => void) | null }[] = [];
-  const Original = globalThis.WebSocket;
-  class FakeSocket {
-    onmessage: ((event: { data: string }) => void) | null = null;
-    onopen: (() => void) | null = null;
-    onerror: (() => void) | null = null;
-    onclose: (() => void) | null = null;
-    constructor(_url: string) {
-      sockets.push(this);
-    }
-    close() {
-      this.onclose?.();
-    }
-    send() {}
-  }
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
+  const installed = installFakeSocket();
   const stream = new TickerStream();
   try {
     const next = stream.middleware(controller as unknown as Controller);
@@ -67,9 +53,10 @@ it('writes symbols from a batch that arrived while the previous write was in fli
       type: actionTypes.SUBSCRIBE,
       endpoint: getTickers,
     } as never);
-    sockets[0].onmessage?.({ data: JSON.stringify([mini('BTCUSDT', '1', 1)]) });
-    sockets[0].onmessage?.({ data: JSON.stringify([mini('ETHUSDT', '2', 2)]) });
-    sockets[0].onmessage?.({ data: JSON.stringify([mini('ADAUSDT', '3', 3)]) });
+    const socket = installed.sockets[0];
+    socket.onmessage?.({ data: JSON.stringify([mini('BTCUSDT', '1', 1)]) });
+    socket.onmessage?.({ data: JSON.stringify([mini('ETHUSDT', '2', 2)]) });
+    socket.onmessage?.({ data: JSON.stringify([mini('ADAUSDT', '3', 3)]) });
     expect(written).toEqual(['BTCUSDT']);
     release?.();
     await act(async () => {
@@ -78,7 +65,7 @@ it('writes symbols from a batch that arrived while the previous write was in fli
     expect(written).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
   } finally {
     stream.cleanup();
-    globalThis.WebSocket = Original;
+    installed.restore();
   }
 });
 
@@ -139,15 +126,15 @@ describe('reopen', () => {
 });
 
 it('keeps a newer last price when an older ticker snapshot arrives', async () => {
-  const { result, controller } = renderDataHook(() =>
-    useQuery(Ticker, { symbol: 'BTCUSDT' }),
+  const { result, controller } = renderDataHook(() => ({
+    btc: useQuery(Ticker, { symbol: 'BTCUSDT' }),
+    eth: useQuery(Ticker, { symbol: 'ETHUSDT' }),
+  }));
+  await actWrite(() =>
+    controller.set(Ticker, { symbol: 'BTCUSDT' }, { ...mini('BTCUSDT', '120', 2_000), q: '60' }),
   );
-  let promise: Promise<void> | undefined;
-  act(() => {
-    promise = controller.set(Ticker, { symbol: 'BTCUSDT' }, mini('BTCUSDT', '50', 200));
-  });
-  await promise;
-  expect(result.current?.last).toBe(50);
+  expect(result.current.btc?.last).toBe(120);
+  expect(result.current.btc?.quoteVolume).toBe(60);
 
   const row = {
     symbol: 'BTCUSDT',
@@ -159,23 +146,30 @@ it('keeps a newer last price when an older ticker snapshot arrives', async () =>
     quoteVolume: '9',
     closeTime: 100,
   };
-  act(() => {
-    promise = controller.resolve(getTickers, {
+  await actWrite(() =>
+    controller.resolve(getTickers, {
       args: [],
-      response: [row],
+      response: [row, { ...row, symbol: 'ETHUSDT', lastPrice: '110', closeTime: 100 }],
       fetchedAt: 1,
-    });
-  });
-  await promise;
-  expect(result.current?.last).toBe(50);
+    }),
+  );
+  expect(result.current.btc?.last).toBe(120);
+  expect(result.current.eth?.last).toBe(110);
 
-  act(() => {
-    promise = controller.resolve(getTickers, {
+  await actWrite(() =>
+    controller.set(Ticker, { symbol: 'BTCUSDT' }, { ...row, lastPrice: '1', closeTime: 500 }),
+  );
+  expect(result.current.btc?.last).toBe(120);
+  expect(result.current.btc?.eventTime).toBe(2_000);
+  expect(result.current.eth?.last).toBe(110);
+
+  await actWrite(() =>
+    controller.resolve(getTickers, {
       args: [],
-      response: [{ ...row, lastPrice: '80', closeTime: 300 }],
+      response: [{ ...row, lastPrice: '80', closeTime: 3_000 }],
       fetchedAt: 2,
-    });
-  });
-  await promise;
-  expect(result.current?.last).toBe(80);
+    }),
+  );
+  expect(result.current.btc?.last).toBe(80);
+  expect(result.current.eth?.last).toBe(110);
 });

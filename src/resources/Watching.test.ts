@@ -4,33 +4,10 @@ import { act } from 'react';
 
 import { getMarkets } from './Markets';
 import { getExchangeInfo } from './Symbol';
+import { memoryStorage, actWrite } from './testSupport';
 import { getTickers } from './Ticker';
 import { getWatching, setWatched, WatchedSymbol } from './Watching';
 import { readWatched } from './watchStorage';
-
-function memoryStorage(): Storage {
-  const map = new Map<string, string>();
-  return {
-    get length() {
-      return map.size;
-    },
-    clear() {
-      map.clear();
-    },
-    getItem(key) {
-      return map.has(key) ? map.get(key)! : null;
-    },
-    key(index) {
-      return [...map.keys()][index] ?? null;
-    },
-    removeItem(key) {
-      map.delete(key);
-    },
-    setItem(key, value) {
-      map.set(key, String(value));
-    },
-  };
-}
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', {
@@ -105,11 +82,8 @@ function fetchWatched(
   symbol: string,
   watched: boolean,
 ) {
-  let promise: Promise<unknown> | undefined;
-  act(() => {
-    promise = controller.fetch(setWatched, { symbol, watched });
-  });
-  return promise!.then(async value => {
+  const promise = actWrite(() => controller.fetch(setWatched, { symbol, watched }));
+  return promise.then(async value => {
     // The fetch promise resolves before the store commit. One more turn lets the hook paint.
     await act(async () => {
       await Promise.resolve();

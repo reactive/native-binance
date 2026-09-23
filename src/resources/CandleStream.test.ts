@@ -3,6 +3,7 @@ import type { Controller } from '@data-client/react';
 
 import { getCandles, upsertCandle } from './Candle';
 import CandleStream from './CandleStream';
+import { klineStream } from './streams';
 import { FakeSocket, installFakeSocket } from './testSocket';
 
 let restoreSocket = () => {};
@@ -63,9 +64,7 @@ it('reference-counts one kline socket per symbol and interval', async () => {
 
   await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, args);
   await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, args);
-  expect(FakeSocket.instances.map(socket => socket.url)).toEqual([
-    'wss://data-stream.binance.vision/ws/btcusdt@kline_15m',
-  ]);
+  expect(FakeSocket.instances.map(socket => socket.url)).toEqual([klineStream('BTCUSDT', '15m')]);
 
   await dispatch(stream, ctrl, actionTypes.UNSUBSCRIBE, args);
   expect(FakeSocket.instances[0].closed).toBe(false);
@@ -84,8 +83,8 @@ it('leaves the other interval open when one interval unsubscribes', async () => 
   await dispatch(stream, ctrl, actionTypes.UNSUBSCRIBE, { symbol: 'BTCUSDT', interval: '15m' });
 
   expect(FakeSocket.instances.map(socket => [socket.url, socket.closed])).toEqual([
-    ['wss://data-stream.binance.vision/ws/btcusdt@kline_15m', true],
-    ['wss://data-stream.binance.vision/ws/btcusdt@kline_1h', false],
+    [klineStream('BTCUSDT', '15m'), true],
+    [klineStream('BTCUSDT', '1h'), false],
   ]);
 });
 

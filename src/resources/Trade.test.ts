@@ -2,6 +2,8 @@ import { actionTypes, useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 import { act } from 'react';
 
+import { actWrite } from './testSupport';
+import { installFakeSocket } from './testSocket';
 import { getTrades, newTrades, TAPE_LIMIT } from './Trade';
 import TradeStream from './TradeStream';
 
@@ -29,11 +31,7 @@ function setTrades(
   symbol: string,
   value: object | object[],
 ) {
-  let promise: Promise<void> | undefined;
-  act(() => {
-    promise = controller.set(newTrades, { symbol }, value);
-  });
-  return promise;
+  return actWrite(() => controller.set(newTrades, { symbol }, value));
 }
 
 function resolveTrades(
@@ -42,15 +40,13 @@ function resolveTrades(
   response: unknown,
   fetchedAt: number,
 ) {
-  let promise: Promise<void> | undefined;
-  act(() => {
-    promise = controller.resolve(getTrades, {
+  return actWrite(() =>
+    controller.resolve(getTrades, {
       args: [{ symbol }],
       response,
       fetchedAt,
-    });
-  });
-  return promise;
+    }),
+  );
 }
 
 it('stores an aggregate snapshot newest first', () => {
@@ -65,8 +61,6 @@ it('stores an aggregate snapshot newest first', () => {
   expect(result.current.map(trade => trade.a)).toEqual([2, 1]);
   expect(result.current[0].price).toBe(100.2);
   expect(result.current[0].qty).toBe(2);
-  expect(typeof result.current[0].price).toBe('number');
-  expect(typeof result.current[0].qty).toBe('number');
   expect(result.current[0].takerBuy).toBe(false);
   expect(result.current[1].takerBuy).toBe(true);
 });
@@ -151,19 +145,7 @@ it('keeps the stream list when an older snapshot resolves', async () => {
 });
 
 it('keeps a print merged before the refetch after the snapshot returns', async () => {
-  const Original = globalThis.WebSocket;
-  class FakeSocket {
-    onmessage: ((event: { data: string }) => void) | null = null;
-    onopen: (() => void) | null = null;
-    onerror: (() => void) | null = null;
-    onclose: (() => void) | null = null;
-    constructor(_url: string) {}
-    close() {
-      this.onclose?.();
-    }
-    send() {}
-  }
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
+  const installed = installFakeSocket();
 
   const { result, controller } = renderDataHook(
     () => useSuspense(getTrades, { symbol: 'BTCUSDT' }),
@@ -218,6 +200,6 @@ it('keeps a print merged before the refetch after the snapshot returns', async (
     expect(result.current.map(trade => trade.a)).toEqual([12, 11, 10]);
   } finally {
     stream.cleanup();
-    globalThis.WebSocket = Original;
+    installed.restore();
   }
 });
