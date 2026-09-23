@@ -18,16 +18,22 @@ type MarketRowProps = {
   onPress: (symbol: string) => void;
 };
 
-function lineHeight(size: number, multiplier: number): number {
-  return size * multiplier;
+function rowStack(type: {
+  label: { size: number; lineHeight: number };
+  caption: { size: number; lineHeight: number };
+}): { labelLine: number; captionLine: number; rowTop: number } {
+  const labelLine = type.label.size * type.label.lineHeight;
+  const captionLine = type.caption.size * type.caption.lineHeight;
+  return {
+    labelLine,
+    captionLine,
+    rowTop: (MARKET_ROW_HEIGHT - labelLine - captionLine) / 2,
+  };
 }
 
 export function MarketSkeletonRow(): JSX.Element {
   const { theme } = useTheme();
-  const type = theme.semantic.typography;
-  const labelLine = lineHeight(type.label.size, type.label.lineHeight);
-  const captionLine = lineHeight(type.caption.size, type.caption.lineHeight);
-  const rowTop = (MARKET_ROW_HEIGHT - labelLine - captionLine) / 2;
+  const { labelLine, captionLine, rowTop } = rowStack(theme.semantic.typography);
   return (
     <View
       style={[
@@ -63,10 +69,7 @@ export const MarketRow = memo(function MarketRow({
   const ticker = useQuery(Ticker, { symbol });
   const { theme } = useTheme();
   const color = theme.semantic.color;
-  const type = theme.semantic.typography;
-  const labelLine = lineHeight(type.label.size, type.label.lineHeight);
-  const captionLine = lineHeight(type.caption.size, type.caption.lineHeight);
-  const rowTop = (MARKET_ROW_HEIGHT - labelLine - captionLine) / 2;
+  const { labelLine, captionLine, rowTop } = rowStack(theme.semantic.typography);
   const up = color.tones.success.solid;
   const down = color.tones.danger.solid;
 

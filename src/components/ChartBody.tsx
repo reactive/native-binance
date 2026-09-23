@@ -1,6 +1,6 @@
 import { AsyncBoundary, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Text, useTheme } from '@reactive/silk-native';
-import { Fragment, type JSX } from 'react';
+import { Fragment, type ComponentProps, type JSX } from 'react';
 import {
   PixelRatio,
   StyleSheet,
@@ -32,6 +32,24 @@ import {
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
+
+function DeviceMark({
+  style,
+  testID,
+}: {
+  style: NonNullable<ComponentProps<typeof View>['style']>;
+  testID?: string;
+}): JSX.Element {
+  return (
+    <View
+      testID={testID}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      pointerEvents="none"
+      style={style}
+    />
+  );
+}
 
 function intervalLabel(interval: CandleInterval): string {
   return INTERVALS.find(item => item.value === interval)?.label ?? interval;
@@ -191,10 +209,7 @@ function CandlePlot({
             item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
           return (
             <Fragment key={candle.openTime}>
-              <View
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                pointerEvents="none"
+              <DeviceMark
                 style={{
                   position: 'absolute',
                   left: x + wickOffset,
@@ -204,11 +219,8 @@ function CandlePlot({
                   backgroundColor: color,
                 }}
               />
-              <View
+              <DeviceMark
                 testID={newest ? 'candle-last' : undefined}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                pointerEvents="none"
                 style={{
                   position: 'absolute',
                   left: x,
@@ -219,10 +231,7 @@ function CandlePlot({
                 }}
               />
               {hollow ?
-                <View
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
-                  pointerEvents="none"
+                <DeviceMark
                   style={{
                     position: 'absolute',
                     left: x + metrics.wick,
