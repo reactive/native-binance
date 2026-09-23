@@ -1,28 +1,5 @@
+import { memoryStorage } from './testSupport';
 import { readWatched, writeWatched } from './watchStorage';
-
-function memoryStorage(): Storage {
-  const map = new Map<string, string>();
-  return {
-    get length() {
-      return map.size;
-    },
-    clear() {
-      map.clear();
-    },
-    getItem(key) {
-      return map.has(key) ? map.get(key)! : null;
-    },
-    key(index) {
-      return [...map.keys()][index] ?? null;
-    },
-    removeItem(key) {
-      map.delete(key);
-    },
-    setItem(key, value) {
-      map.set(key, String(value));
-    },
-  };
-}
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', {

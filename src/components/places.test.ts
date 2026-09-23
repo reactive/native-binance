@@ -1,9 +1,10 @@
 import { useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
-import { act } from 'react';
+
+import { getOrderBook, OrderBook } from '@/resources/OrderBook';
+import { actWrite } from '@/resources/testSupport';
 
 import { nextPlaces, type Places } from './places';
-import { getOrderBook, OrderBook } from '@/resources/OrderBook';
 
 const START: Places = { price: 2, size: 2 };
 
@@ -11,11 +12,7 @@ function setBook(
   controller: { set: (...args: any[]) => Promise<void> },
   value: object,
 ) {
-  let promise: Promise<void> | undefined;
-  act(() => {
-    promise = controller.set(OrderBook, { symbol: 'DOGEUSDT' }, value);
-  });
-  return promise;
+  return actWrite(() => controller.set(OrderBook, { symbol: 'DOGEUSDT' }, value));
 }
 
 it('only widens when nothing is locked', () => {

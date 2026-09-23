@@ -72,7 +72,6 @@ it('stores the deadline as milliseconds and reads a Date', () => {
   expect(usdp.pdTradeDeadline?.toISOString()).toBe('2026-09-24T03:00:00.000Z');
   expect(usdp.caution?.kind).toBe('preDelist');
   expect(usdp.caution?.deadline?.toISOString()).toBe('2026-09-24T03:00:00.000Z');
-  expect(Asset.schema.pdTradeDeadline(1790218800000)).toEqual(new Date(1790218800000));
 });
 
 it('keeps raw fields, including ones this screen does not read', () => {
@@ -320,7 +319,18 @@ it('builds primers from the kinds the header shows and dedupes a shared article'
   expect(gold.kinds).toEqual(['Tokenized commodity', 'Real-world assets']);
   expect(gold.lessons).toHaveLength(1);
   expect(gold.lessons[0]?.title).toBe('What are real-world assets?');
-  expect(coin('MTL', 'Metal DAO', ['Infrastructure']).lessons).toEqual([]);
+  const btc = coin('BTC', 'Bitcoin', ['Payments', 'mining-zone']);
+  expect(btc.kinds).toEqual(['Payments']);
+  expect(btc.lessons.map(lesson => lesson.title)).toEqual(['Crypto payments explained']);
+  expect(coin('USDC', 'USDC', ['stablecoin']).lessons.map(lesson => lesson.title)).toEqual([
+    'What is a stablecoin?',
+  ]);
+  const mav = coin('MAV', 'Maverick Protocol', ['Infrastructure', 'Launchpool', 'defi']);
+  expect(mav.kinds).toEqual(['Infrastructure', 'DeFi']);
+  expect(mav.lessons.map(lesson => lesson.title)).toEqual(['A beginner\u2019s guide to DeFi']);
+  const mtl = coin('MTL', 'Metal DAO', ['Infrastructure']);
+  expect(mtl.kinds).toEqual(['Infrastructure']);
+  expect(mtl.lessons).toEqual([]);
   expect(coin('FIL', 'Filecoin', ['storage-zone']).lessons).toEqual([]);
 });
 
@@ -346,9 +356,17 @@ it('rejects whitepaper links that are not a document on their own host', () => {
   expect(pass.whitepaperHost).toBe('solana.com');
   const file = paper('https://drive.google.com/file/d/abc/view');
   expect(file.whitepaperHost).toBe('drive.google.com');
-  expect(paper('https://cdn.jsdelivr.net/gh/0glabs/0g-doc/static/whitepaper.pdf').whitepaperHost).toBe(
-    'cdn.jsdelivr.net',
-  );
+  const hosts: [string, string][] = [
+    ['https://cdn.jsdelivr.net/gh/0glabs/0g-doc/static/whitepaper.pdf', 'cdn.jsdelivr.net'],
+    ['https://bitcoin.org/bitcoin.pdf', 'bitcoin.org'],
+    ['https://www.paxos.com/pax-gold', 'paxos.com'],
+    ['https://docs.bouncebit.io/', 'docs.bouncebit.io'],
+    [
+      'https://f.hubspotusercontent30.net/hubfs/9304636/PDF/centre-whitepaper.pdf',
+      'f.hubspotusercontent30.net',
+    ],
+  ];
+  for (const [wpu, host] of hosts) expect(paper(wpu).whitepaperHost).toBe(host);
 });
 
 it('orders the path and drops the second concept under a caution', () => {

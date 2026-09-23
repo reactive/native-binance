@@ -6,33 +6,13 @@ import { act } from 'react';
 
 import { getOrderBook } from './OrderBook';
 import OrderBookStream from './OrderBookStream';
+import { actWrite } from './testSupport';
+import { FakeSocket, installFakeSocket } from './testSocket';
+import { depthStream } from './streams';
 
-const URL = 'wss://data-stream.binance.vision/ws/btcusdt@depth@100ms';
+const URL = depthStream('BTCUSDT');
 
-type Handler = ((event?: { data: string }) => void) | null;
-
-class FakeSocket {
-  static instances: FakeSocket[] = [];
-  url: string;
-  onmessage: Handler = null;
-  onopen: Handler = null;
-  onerror: Handler = null;
-  onclose: Handler = null;
-  closed = false;
-
-  constructor(url: string) {
-    this.url = url;
-    FakeSocket.instances.push(this);
-  }
-
-  close() {
-    if (this.closed) return;
-    this.closed = true;
-    this.onclose?.();
-  }
-}
-
-const Original = globalThis.WebSocket;
+let restoreSocket = () => {};
 
 function diff(U: number, u: number, bids: [string, string][] = [], asks: [string, string][] = []) {
   return JSON.stringify({ e: 'depthUpdate', s: 'BTCUSDT', U, u, b: bids, a: asks });
@@ -50,9 +30,15 @@ function bookFixture(lastUpdateId: number, bid = '100', ask = '101') {
   };
 }
 
+async function turn(times = 1) {
+  await act(async () => {
+    for (let i = 0; i < times; i++) await Promise.resolve();
+  });
+}
+
 async function mount(snapshotId = 100) {
-  FakeSocket.instances = [];
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
+  const installed = installFakeSocket();
+  restoreSocket = installed.restore;
   type Snapshot = {
     lastUpdateId: number;
     bids: [string, string][];
@@ -97,13 +83,8 @@ async function mount(snapshotId = 100) {
   const stream = new OrderBookStream();
   const handle = stream.middleware(controller)(async () => {});
   const set = controller.set.bind(controller);
-  controller.set = ((...args: Parameters<Controller['set']>) => {
-    let promise: Promise<void> | undefined;
-    act(() => {
-      promise = set(...args);
-    });
-    return promise ?? Promise.resolve();
-  }) as Controller['set'];
+  controller.set = ((...args: Parameters<Controller['set']>) =>
+    actWrite(() => set(...args)) ?? Promise.resolve()) as Controller['set'];
   const resolve = controller.resolve.bind(controller);
   controller.resolve = ((endpoint, meta) => {
     const promise = resolve(endpoint, meta);
@@ -126,9 +107,7 @@ async function mount(snapshotId = 100) {
 
   async function frame(data: string) {
     FakeSocket.instances.at(-1)?.onmessage?.({ data });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await turn();
   }
 
   async function unsubscribe() {
@@ -154,8 +133,8 @@ async function mount(snapshotId = 100) {
 }
 
 afterEach(() => {
-  globalThis.WebSocket = Original;
-  FakeSocket.instances = [];
+  restoreSocket();
+  restoreSocket = () => {};
 });
 
 it('does not rewind the cursor when a stale depth snapshot is ignored', async () => {
@@ -173,10 +152,7 @@ it('does not rewind the cursor when a stale depth snapshot is ignored', async ()
       },
       fetchedAt: 1,
     });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await turn(2);
 
     expect(result.current.lastUpdateId).toBe(105);
     expect(result.current.bids).toEqual([[100, 2]]);
@@ -219,10 +195,7 @@ it('refetches once on a gap, then applies the diffs that arrived during the snap
       bids: [['100', '1']],
       asks: [['101', '1']],
     });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await turn(2);
 
     expect(fetches()).toBe(1);
     expect(result.current.lastUpdateId).toBe(132);
@@ -268,10 +241,7 @@ it('resyncs the first diff after reconnect without emptying the book', async () 
       bids: [['110', '2']],
       asks: [['111', '2']],
     });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await turn(2);
     note();
     expect(result.current.lastUpdateId).toBe(210);
     expect(result.current.bestBid).toBe(110);
@@ -296,17 +266,13 @@ it('waits out a failed resync instead of refetching on every diff', async () => 
     expect(result.current.lastUpdateId).toBe(100);
 
     rejectSnapshot(new TypeError('Failed to fetch'));
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await turn();
     jest.advanceTimersByTime(499);
     await frame(diff(140, 141, [['99', '3']]));
     expect(fetches()).toBe(1);
 
     jest.advanceTimersByTime(1);
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await turn();
     expect(fetches()).toBe(2);
 
     releaseSnapshot({
@@ -314,24 +280,17 @@ it('waits out a failed resync instead of refetching on every diff', async () => 
       bids: [['100', '1']],
       asks: [['101', '1']],
     });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await turn(2);
     expect(result.current.lastUpdateId).toBe(200);
 
     await frame(diff(300, 301, [['90', '1']]));
     expect(fetches()).toBe(3);
     rejectSnapshot(new TypeError('Failed to fetch'));
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await turn();
     jest.advanceTimersByTime(499);
     expect(fetches()).toBe(3);
     jest.advanceTimersByTime(1);
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await turn();
     expect(fetches()).toBe(4);
   } finally {
     jest.useRealTimers();
@@ -346,9 +305,7 @@ it('clears a resync backoff when the book unsubscribes', async () => {
     await frame(diff(120, 124));
     expect(fetches()).toBe(1);
     rejectSnapshot(new TypeError('Failed to fetch'));
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await turn();
     await unsubscribe();
     jest.advanceTimersByTime(10_000);
     expect(fetches()).toBe(1);

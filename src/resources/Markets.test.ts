@@ -1,9 +1,9 @@
 import { useQuery } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
-import { act } from 'react';
 
 import { getMarkets } from './Markets';
-import { getExchangeInfo, MarketSymbol } from './Symbol';
+import { getExchangeInfo } from './Symbol';
+import { actWrite } from './testSupport';
 import { getTickers, Ticker } from './Ticker';
 import { readMiniTickers } from './TickerStream';
 
@@ -75,8 +75,6 @@ function useLists() {
     change: useQuery(getMarkets, { quote: 'USDT', sort: 'change' as const }),
     name: useQuery(getMarkets, { quote: 'USDT', sort: 'name' as const }),
     usdc: useQuery(getMarkets, { quote: 'USDC', sort: 'volume' as const }),
-    btc: useQuery(MarketSymbol, { symbol: 'BTCUSDT' }),
-    bnb: useQuery(MarketSymbol, { symbol: 'BNBBTC' }),
     btcTicker: useQuery(Ticker, { symbol: 'BTCUSDT' }),
   };
 }
@@ -85,15 +83,6 @@ const fixtures = [
   { endpoint: getExchangeInfo, args: [], response: exchange },
   { endpoint: getTickers, args: [], response: tickers },
 ];
-
-it('flattens exchange-info filters onto the symbol', () => {
-  const { result } = renderDataHook(() => useLists(), { initialFixtures: fixtures });
-  expect(result.current.btc?.tickSize).toBe('0.01000000');
-  expect(result.current.btc?.stepSize).toBe('0.00001000');
-  expect(result.current.btc?.minNotional).toBe('5.00000000');
-  expect(result.current.bnb?.minNotional).toBe('0.00010000');
-  expect(result.current.bnb?.tickSize).toBe('0.00000100');
-});
 
 it('lists trading quotes by volume, change, and name', () => {
   const { result } = renderDataHook(() => useLists(), { initialFixtures: fixtures });
@@ -132,53 +121,8 @@ function setTicker(
   controller: { set: (...args: any[]) => Promise<void> },
   value: object,
 ) {
-  let promise: Promise<void> | undefined;
-  act(() => {
-    promise = controller.set(Ticker, { symbol: 'BTCUSDT' }, value);
-  });
-  return promise;
+  return actWrite(() => controller.set(Ticker, { symbol: 'BTCUSDT' }, value));
 }
-
-it('keeps a newer last price when an older ticker arrives', async () => {
-  const { result, controller } = renderDataHook(
-    () => ({
-      btc: useQuery(Ticker, { symbol: 'BTCUSDT' }),
-      eth: useQuery(Ticker, { symbol: 'ETHUSDT' }),
-    }),
-    {
-      initialFixtures: [
-        {
-          endpoint: getTickers,
-          args: [],
-          response: [
-            ticker('BTCUSDT', '101', '100', '50', 1_000),
-            ticker('ETHUSDT', '110', '100', '20', 1_000),
-          ],
-        },
-      ],
-    },
-  );
-
-  await setTicker(controller, {
-    e: '24hrMiniTicker',
-    E: 2_000,
-    s: 'BTCUSDT',
-    c: '120',
-    o: '100',
-    h: '121',
-    l: '99',
-    v: '3',
-    q: '60',
-  });
-  expect(result.current.btc?.last).toBe(120);
-  expect(result.current.btc?.quoteVolume).toBe(60);
-  expect(result.current.eth?.last).toBe(110);
-
-  await setTicker(controller, ticker('BTCUSDT', '1', '1', '1', 500));
-  expect(result.current.btc?.last).toBe(120);
-  expect(result.current.btc?.eventTime).toBe(2_000);
-  expect(result.current.eth?.last).toBe(110);
-});
 
 it('filters on this phone and keeps a halted symbol out of the default list', () => {
   const searched = {

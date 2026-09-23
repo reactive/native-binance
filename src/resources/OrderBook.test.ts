@@ -1,37 +1,46 @@
 import { useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
-import { act } from 'react';
 
 import { getOrderBook, OrderBook } from './OrderBook';
+import { actWrite } from './testSupport';
+
+function mount(response: object) {
+  return renderDataHook(() => useSuspense(getOrderBook, { symbol: 'BTCUSDT' }), {
+    initialFixtures: [
+      {
+        endpoint: getOrderBook,
+        args: [{ symbol: 'BTCUSDT' }],
+        response,
+      },
+    ],
+  });
+}
 
 function setBook(
   controller: { set: (...args: any[]) => Promise<void> },
   value: object,
 ) {
-  let promise: Promise<void> | undefined;
-  act(() => {
-    promise = controller.set(OrderBook, { symbol: 'BTCUSDT' }, value);
-  });
-  return promise;
+  return actWrite(() => controller.set(OrderBook, { symbol: 'BTCUSDT' }, value));
 }
 
+const snapshot = {
+  lastUpdateId: 10,
+  bids: [
+    ['100.5', '1'],
+    ['100', '4'],
+  ],
+  asks: [
+    ['101.25', '2'],
+    ['102', '5'],
+  ],
+};
+
 it('normalizes a depth snapshot into the book', () => {
-  const { result } = renderDataHook(
-    () => useSuspense(getOrderBook, { symbol: 'BTCUSDT' }),
-    {
-      initialFixtures: [
-        {
-          endpoint: getOrderBook,
-          args: [{ symbol: 'BTCUSDT' }],
-          response: {
-            lastUpdateId: 10,
-            bids: [['100.5', '1']],
-            asks: [['101.25', '2']],
-          },
-        },
-      ],
-    },
-  );
+  const { result } = mount({
+    lastUpdateId: 10,
+    bids: [['100.5', '1']],
+    asks: [['101.25', '2']],
+  });
 
   expect(result.current.symbol).toBe('BTCUSDT');
   expect(result.current.bestBid).toBe(100.5);
@@ -41,44 +50,13 @@ it('normalizes a depth snapshot into the book', () => {
 });
 
 it('merges a depth diff and ignores stale or gapped updates', async () => {
-  const { result, controller } = renderDataHook(
-    () => useSuspense(getOrderBook, { symbol: 'BTCUSDT' }),
-    {
-      initialFixtures: [
-        {
-          endpoint: getOrderBook,
-          args: [{ symbol: 'BTCUSDT' }],
-          response: {
-            lastUpdateId: 10,
-            bids: [
-              ['100.5', '1'],
-              ['100', '4'],
-            ],
-            asks: [
-              ['101.25', '2'],
-              ['102', '5'],
-            ],
-          },
-        },
-      ],
-    },
-  );
+  const { result, controller } = mount(snapshot);
 
-  await setBook(controller, {
-    U: 8,
-    u: 9,
-    b: [['1', '1']],
-    a: [],
-  });
+  await setBook(controller, { U: 8, u: 9, b: [['1', '1']], a: [] });
   expect(result.current.lastUpdateId).toBe(10);
   expect(result.current.bestBid).toBe(100.5);
 
-  await setBook(controller, {
-    U: 12,
-    u: 13,
-    b: [['100.5', '9']],
-    a: [],
-  });
+  await setBook(controller, { U: 12, u: 13, b: [['100.5', '9']], a: [] });
   expect(result.current.lastUpdateId).toBe(10);
   expect(result.current.bids[0]).toEqual([100.5, 1]);
 

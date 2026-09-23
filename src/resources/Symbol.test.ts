@@ -54,7 +54,7 @@ function useSymbols() {
   };
 }
 
-it('reads tick, step, and places from the filters schema', () => {
+it('reads tick, step, places, and min notional from the filters schema', () => {
   const { result } = renderDataHook(() => useSymbols(), { initialFixtures: fixtures });
 
   expect(result.current.btc?.tickSize).toBe('0.01000000');
@@ -67,17 +67,11 @@ it('reads tick, step, and places from the filters schema', () => {
   expect(result.current.doge?.sizePlaces).toBe(0);
   expect(result.current.shib?.pricePlaces).toBe(8);
   expect(result.current.shib?.sizePlaces).toBe(0);
-});
 
-it('fills minNotional from MIN_NOTIONAL when NOTIONAL is absent', () => {
-  const { result } = renderDataHook(() => useSymbols(), { initialFixtures: fixtures });
   expect(result.current.bnb?.minNotional).toBe('0.00010000');
   expect(result.current.bnb?.pricePlaces).toBe(5);
   expect(result.current.bnb?.sizePlaces).toBe(4);
-});
 
-it('leaves price places unset when PRICE_FILTER is missing', () => {
-  const { result } = renderDataHook(() => useSymbols(), { initialFixtures: fixtures });
   expect(result.current.noPrice?.pricePlaces).toBeUndefined();
   expect(result.current.noPrice?.tickSize).toBe('');
   expect(result.current.noPrice?.sizePlaces).toBe(3);
