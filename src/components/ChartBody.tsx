@@ -1,9 +1,8 @@
 import { AsyncBoundary, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Text, useTheme } from '@reactive/silk-native';
-import { Fragment, type JSX } from 'react';
+import { Fragment, type ComponentProps, type JSX } from 'react';
 import {
   PixelRatio,
-  Pressable,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -12,11 +11,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LoadError } from '@/components/LoadError';
+import { Pill } from '@/components/Pill';
 import {
   candleLayout,
   candleMetrics,
   INTERVAL_ROW,
   PLOT_MARGIN,
+  PLOT_PAD,
   plotDeviceShift,
   plotSize,
   READOUT,
@@ -31,6 +32,24 @@ import {
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
+
+function DeviceMark({
+  style,
+  testID,
+}: {
+  style: NonNullable<ComponentProps<typeof View>['style']>;
+  testID?: string;
+}): JSX.Element {
+  return (
+    <View
+      testID={testID}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      pointerEvents="none"
+      style={style}
+    />
+  );
+}
 
 function intervalLabel(interval: CandleInterval): string {
   return INTERVALS.find(item => item.value === interval)?.label ?? interval;
@@ -48,18 +67,13 @@ function IntervalChips({
       {INTERVALS.map(item => {
         const selected = item.value === value;
         return (
-          <Pressable
+          <Pill
             key={item.value}
             testID={`interval-${item.value}`}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
+            label={item.label}
+            selected={selected}
             onPress={() => onSelect(item.value)}
-            style={styles.chip}
-          >
-            <Text role="label" tone={selected ? 'primary' : 'secondary'}>
-              {item.label}
-            </Text>
-          </Pressable>
+          />
         );
       })}
     </View>
@@ -109,7 +123,7 @@ function ReadoutItem({
 }): JSX.Element {
   return (
     <View style={styles.readoutItem}>
-      <Text role="caption" tone="secondary">
+      <Text role="caption" tone="secondary" numberOfLines={1}>
         {label}
       </Text>
       <Text
@@ -153,7 +167,15 @@ function CandlePlot({
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
   const flat = theme.semantic.color.textSecondary;
+  const surface = theme.semantic.color.surface;
   const wickOffset = (metrics.body - metrics.wick) / 2;
+  const minHollow = metrics.wick * 3;
+  let seriesHigh = candles[0].high;
+  let seriesLow = candles[0].low;
+  for (const candle of candles) {
+    if (candle.high > seriesHigh) seriesHigh = candle.high;
+    if (candle.low < seriesLow) seriesLow = candle.low;
+  }
 
   return (
     <View
@@ -181,12 +203,13 @@ function CandlePlot({
           const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
           const newest = index === placed.length - 1;
           const x = Math.round(item.x * ratio);
+          const bodyTop = Math.round(item.bodyTop * ratio);
+          const bodyH = Math.round(item.bodyHeight * ratio);
+          const hollow =
+            item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
           return (
             <Fragment key={candle.openTime}>
-              <View
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                pointerEvents="none"
+              <DeviceMark
                 style={{
                   position: 'absolute',
                   left: x + wickOffset,
@@ -196,23 +219,42 @@ function CandlePlot({
                   backgroundColor: color,
                 }}
               />
-              <View
+              <DeviceMark
                 testID={newest ? 'candle-last' : undefined}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                pointerEvents="none"
                 style={{
                   position: 'absolute',
                   left: x,
-                  top: Math.round(item.bodyTop * ratio),
+                  top: bodyTop,
                   width: metrics.body,
-                  height: Math.round(item.bodyHeight * ratio),
+                  height: bodyH,
                   backgroundColor: color,
                 }}
               />
+              {hollow ?
+                <DeviceMark
+                  style={{
+                    position: 'absolute',
+                    left: x + metrics.wick,
+                    top: bodyTop + metrics.wick,
+                    width: metrics.body - metrics.wick * 2,
+                    height: bodyH - metrics.wick * 2,
+                    backgroundColor: surface,
+                  }}
+                />
+              : null}
             </Fragment>
           );
         })}
+      </View>
+      <View pointerEvents="none" style={[styles.band, styles.bandTop]}>
+        <Text role="caption" tone="secondary" style={TABULAR} testID="series-high">
+          {formatPrice(seriesHigh, places)}
+        </Text>
+      </View>
+      <View pointerEvents="none" style={[styles.band, styles.bandBottom]}>
+        <Text role="caption" tone="secondary" style={TABULAR} testID="series-low">
+          {formatPrice(seriesLow, places)}
+        </Text>
       </View>
     </View>
   );
@@ -236,7 +278,7 @@ function LiveCandles({
   const candles = useLive(getCandles, { symbol, interval });
   if (candles.length === 0) {
     return (
-      <Text tone="secondary" testID="chart-empty">
+      <Text tone="secondary" testID="chart-empty" style={styles.message}>
         No candles yet
       </Text>
     );
@@ -281,7 +323,7 @@ export default function ChartBody({
       <AsyncBoundary
         key={retry}
         fallback={
-          <Text tone="secondary" testID="chart-loading">
+          <Text tone="secondary" testID="chart-loading" style={styles.message}>
             Loading {symbol}
           </Text>
         }
@@ -310,17 +352,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: PLOT_MARGIN,
-  },
-  chip: {
-    flex: 1,
-    height: INTERVAL_ROW,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
   },
   plot: {
     marginHorizontal: PLOT_MARGIN,
     position: 'relative',
     overflow: 'hidden',
+  },
+  band: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: PLOT_PAD,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  bandTop: {
+    top: 0,
+  },
+  bandBottom: {
+    bottom: 0,
+  },
+  message: {
+    paddingHorizontal: PLOT_MARGIN,
+    paddingTop: PLOT_MARGIN,
   },
   readout: {
     height: READOUT,

@@ -1,8 +1,8 @@
 import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
-import { Badge, Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
+import { Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
+import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChartBody from '@/components/ChartBody';
@@ -25,6 +25,9 @@ const STRIP = 64;
 const SEGMENT = 44;
 const HIT = 44;
 const GUTTER = 12;
+const PAIR_MAX = 296;
+const STATUS_MAX = 92;
+const INDICATOR_PX = 8;
 
 const SEGMENTS = ['Book', 'Trades', 'Chart', 'Info'] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -44,7 +47,7 @@ function PairTitle({ symbol }: { symbol: string }): JSX.Element {
       `${instrument.baseAsset} / ${instrument.quoteAsset}`
     : symbol;
   return (
-    <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair">
+    <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair" style={styles.pair}>
       {title}
     </Heading>
   );
@@ -60,7 +63,7 @@ function WatchFallback(): JSX.Element {
       disabled
       style={styles.hit}
     >
-      <Text role="headingSm">☆</Text>
+      <Text role="heading">☆</Text>
     </Pressable>
   );
 }
@@ -88,7 +91,7 @@ function WatchToggle({ symbol }: { symbol: string }): JSX.Element {
       onPress={onPress}
       style={styles.hit}
     >
-      <Text role="headingSm">{watched ? '★' : '☆'}</Text>
+      <Text role="heading">{watched ? '★' : '☆'}</Text>
     </Pressable>
   );
 }
@@ -119,18 +122,18 @@ function TopBar({ symbol, retry }: { symbol: string; retry: number }): JSX.Eleme
         onPress={goBack}
         style={styles.hit}
       >
-        <Text role="headingSm">←</Text>
+        <Text role="heading">←</Text>
       </Pressable>
       <View style={styles.title}>
         <AsyncBoundary
           key={retry}
           fallback={
-            <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair">
+            <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair" style={styles.pair}>
               {symbol}
             </Heading>
           }
           errorComponent={() => (
-            <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair">
+            <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair" style={styles.pair}>
               {symbol}
             </Heading>
           )}
@@ -159,18 +162,52 @@ function Stat({
   label,
   value,
   testID,
+  grow,
 }: {
   label: string;
   value: string;
   testID: string;
+  grow?: boolean;
 }): JSX.Element {
   return (
-    <View style={styles.stat}>
-      <Text role="caption" tone="secondary">
+    <View style={[styles.stat, grow ? styles.statGrow : null]}>
+      <Text role="caption" tone="secondary" numberOfLines={1} style={styles.statLabel}>
         {label}
       </Text>
-      <Text role="caption" style={TABULAR} numberOfLines={1} testID={testID}>
+      <Text
+        role="caption"
+        style={[TABULAR, styles.statValue]}
+        numberOfLines={1}
+        testID={testID}
+      >
         {value}
+      </Text>
+    </View>
+  );
+}
+
+function StatusBadge({ status }: { status: string }): JSX.Element {
+  const { theme } = useTheme();
+  const tone = theme.semantic.color.tones.neutral;
+  const space = theme.semantic.space;
+  return (
+    <View
+      testID="symbol-status"
+      accessibilityLabel={status}
+      style={[
+        styles.statusBadge,
+        {
+          borderRadius: theme.semantic.radius.full,
+          borderColor: tone.border,
+          backgroundColor: tone.subtle,
+          minHeight: space[4] + space[1],
+          paddingLeft: space[1],
+          paddingRight: space[1],
+        },
+      ]}
+    >
+      <Text role="caption" numberOfLines={1} style={{ color: tone.text, flexShrink: 1 }}>
+        {status}
       </Text>
     </View>
   );
@@ -197,7 +234,7 @@ function PriceStrip({
 
   return (
     <View style={styles.strip} testID="price-strip">
-      <View style={styles.stripLine}>
+      <View style={[styles.stripLine, styles.baseline]}>
         <Text
           role="headingLg"
           style={[TABULAR, styles.last]}
@@ -207,9 +244,7 @@ function PriceStrip({
           {last}
         </Text>
         {instrument && instrument.status !== '' && instrument.status !== 'TRADING' ?
-          <Badge size="sm" testID="symbol-status">
-            {instrument.status}
-          </Badge>
+          <StatusBadge status={instrument.status} />
         : <Text
             role="label"
             tone={direction === 0 ? 'secondary' : undefined}
@@ -222,15 +257,58 @@ function PriceStrip({
         <Reconnecting urls={streams} testID="symbol-reconnecting" style={styles.reconnect} />
       </View>
       <View style={styles.stats}>
-        <Stat label="High" value={formatPrice(ticker.high, places)} testID="symbol-high" />
-        <Stat label="Low" value={formatPrice(ticker.low, places)} testID="symbol-low" />
+        <Stat label="24h high" value={formatPrice(ticker.high, places)} testID="symbol-high" grow />
+        <Stat label="24h low" value={formatPrice(ticker.low, places)} testID="symbol-low" grow />
         <Stat
-          label="Volume"
+          label="24h vol"
           value={formatQuoteVolume(ticker.quoteVolume)}
           testID="symbol-volume"
         />
       </View>
     </View>
+  );
+}
+
+function SegmentTab({
+  label,
+  selected,
+  onPress,
+  indicator,
+}: {
+  label: Segment;
+  selected: boolean;
+  onPress: () => void;
+  indicator: string;
+}): JSX.Element {
+  const [labelWidth, setLabelWidth] = useState(0);
+  const mark = INDICATOR_PX / PixelRatio.get();
+  return (
+    <Pressable
+      testID={`segment-${label.toLowerCase()}`}
+      accessibilityRole="tab"
+      aria-selected={selected}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={styles.segment}
+    >
+      <Text
+        role="label"
+        tone={selected ? 'primary' : 'secondary'}
+        onLayout={event => {
+          const next = event.nativeEvent.layout.width;
+          setLabelWidth(current => (current === next ? current : next));
+        }}
+      >
+        {label}
+      </Text>
+      {selected && labelWidth > 0 ?
+        <View pointerEvents="none" style={styles.indicatorSlot}>
+          <View
+            style={{ width: labelWidth + 16, height: mark, backgroundColor: indicator }}
+          />
+        </View>
+      : null}
+    </Pressable>
   );
 }
 
@@ -241,22 +319,18 @@ function Segments({
   segment: Segment;
   onSelect: (segment: Segment) => void;
 }): JSX.Element {
+  const { theme } = useTheme();
+  const color = theme.semantic.color;
   return (
-    <View style={styles.segments}>
+    <View style={[styles.segments, { borderBottomColor: color.borderSubtle }]}>
       {SEGMENTS.map(item => (
-        <Pressable
+        <SegmentTab
           key={item}
-          testID={`segment-${item.toLowerCase()}`}
-          accessibilityRole="tab"
-          aria-selected={item === segment}
-          accessibilityState={{ selected: item === segment }}
+          label={item}
+          selected={item === segment}
           onPress={() => onSelect(item)}
-          style={styles.segment}
-        >
-          <Text role="label" tone={item === segment ? 'primary' : 'secondary'}>
-            {item}
-          </Text>
-        </Pressable>
+          indicator={color.textPrimary}
+        />
       ))}
     </View>
   );
@@ -314,7 +388,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
           <AsyncBoundary
             key={retry}
             fallback={
-              <Text tone="secondary" testID="book-loading">
+              <Text tone="secondary" testID="book-loading" style={styles.message}>
                 Loading {symbol}
               </Text>
             }
@@ -328,7 +402,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
           <AsyncBoundary
             key={retry}
             fallback={
-              <Text tone="secondary" testID="trades-loading">
+              <Text tone="secondary" testID="trades-loading" style={styles.message}>
                 Loading {symbol}
               </Text>
             }
@@ -348,7 +422,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
           <AsyncBoundary
             key={retry}
             fallback={
-              <Text tone="secondary" testID="info-loading">
+              <Text tone="secondary" testID="info-loading" style={styles.message}>
                 Loading {symbol}
               </Text>
             }
@@ -371,7 +445,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 2,
+  },
+  pair: {
+    maxWidth: PAIR_MAX,
   },
   hit: {
     width: HIT,
@@ -398,9 +474,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  baseline: {
+    alignItems: 'baseline',
+  },
   last: {
+    flexShrink: 0,
+  },
+  statusBadge: {
+    alignSelf: 'center',
     flexShrink: 1,
-    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: STATUS_MAX,
+    borderWidth: 1,
   },
   percent: {
     flexShrink: 0,
@@ -414,11 +500,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stat: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 4,
+    flexShrink: 0,
+  },
+  statGrow: {
+    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
+  },
+  statLabel: {
+    flexShrink: 0,
+  },
+  statValue: {
+    flexShrink: 1,
   },
   priceSkeleton: {
     width: 140,
@@ -433,12 +529,24 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   segment: {
     flex: 1,
     height: SEGMENT,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  indicatorSlot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+  },
+  message: {
+    paddingHorizontal: GUTTER,
+    paddingTop: GUTTER,
   },
   body: {
     flex: 1,

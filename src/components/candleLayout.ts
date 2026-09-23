@@ -4,6 +4,8 @@ const CHROME = 156;
 export const INTERVAL_ROW = 44;
 export const READOUT = 40;
 export const PLOT_MARGIN = 12;
+/** Series high and low sit in these bands. Candles use the height between them. */
+export const PLOT_PAD = 20;
 const GUTTER = PLOT_MARGIN * 2;
 /** Top bar, price strip, segment, and interval chips. */
 const ABOVE_PLOT = CHROME + INTERVAL_ROW;
@@ -107,8 +109,9 @@ export function candleLayout(
     if (candle.low < minLow) minLow = candle.low;
   }
   const span = maxHigh - minLow;
-  const inner = height - 16;
-  const y = (price: number) => ((maxHigh - price) / span) * inner + 8;
+  const inner = height - PLOT_PAD * 2;
+  if (inner <= 0) return [];
+  const y = (price: number) => ((maxHigh - price) / span) * inner + PLOT_PAD;
   const flat = span === 0;
   const thickness = snap(1, ratio);
   const flatTop = snap((height - thickness) / 2, ratio);

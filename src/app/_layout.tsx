@@ -2,8 +2,11 @@ import 'expo-sqlite/localStorage/install';
 
 import { DataProvider, getDefaultManagers } from '@data-client/react';
 import { SilkProvider } from '@reactive/silk-native';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { useColorScheme } from 'react-native';
+
+import { interFonts } from '@/fonts';
 
 import CandleStream from '@/resources/CandleStream';
 import OrderBookStream from '@/resources/OrderBookStream';
@@ -19,6 +22,7 @@ const managers = [
 ];
 
 export default function RootLayout() {
+  useFonts(interFonts);
   const colorScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
 
   return (

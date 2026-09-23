@@ -1,11 +1,11 @@
-import { AsyncBoundary, useController, useSuspense } from '@data-client/react';
-import { Heading, Skeleton, useTheme } from '@reactive/silk-native';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { AsyncBoundary, ErrorBoundary, useController, useSuspense } from '@data-client/react';
+import { Heading, useTheme } from '@reactive/silk-native';
+import { Suspense, useEffect, useRef, useState, type JSX } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LoadError } from '@/components/LoadError';
-import { MARKET_ROW_HEIGHT } from '@/components/MarketRow';
+import { MarketSkeletonRow } from '@/components/MarketRow';
 import { MarketList, MarketsChrome } from '@/components/MarketsScreen';
 import { TickerFeed } from '@/components/TickerFeed';
 import type { MarketSort } from '@/resources/Markets';
@@ -34,8 +34,40 @@ function exchangeInfoReadFinished(): boolean {
   );
 }
 
-function Markets(): JSX.Element {
+type ChromeState = {
+  quote: string;
+  sort: MarketSort;
+  query: string;
+  watching: boolean;
+  showWatching: boolean;
+  onQuote: (quote: string) => void;
+  onWatching: () => void;
+  onSort: (sort: MarketSort) => void;
+  onQuery: (query: string) => void;
+};
+
+function MarketsReady({
+  watchKey,
+  quote,
+  sort,
+  query,
+  watching,
+}: Pick<ChromeState, 'quote' | 'sort' | 'query' | 'watching'> & {
+  watchKey: string;
+}): JSX.Element {
   useSuspense(getExchangeInfo);
+  return (
+    <MarketList
+      quote={quote}
+      sort={sort}
+      query={query}
+      watching={watching}
+      watchKey={watchKey}
+    />
+  );
+}
+
+function MarketsShell(): JSX.Element {
   const watchList = useSuspense(getWatching);
   const [quote, setQuote] = useState('USDT');
   const [sort, setSort] = useState<MarketSort>('volume');
@@ -43,25 +75,36 @@ function Markets(): JSX.Element {
   const [watching, setWatching] = useState(false);
   if (watching && watchList.length === 0) setWatching(false);
   const watchKey = watching ? watchList.map(item => item.symbol).join(',') : '';
+  const chrome: ChromeState = {
+    quote,
+    sort,
+    query,
+    watching,
+    showWatching: watchList.length > 0,
+    onQuote: next => {
+      setWatching(false);
+      setQuote(next);
+    },
+    onWatching: () => setWatching(true),
+    onSort: setSort,
+    onQuery: setQuery,
+  };
 
   return (
     <View style={styles.body}>
       <TickerFeed />
-      <MarketsChrome
-        quote={quote}
-        sort={sort}
-        query={query}
-        watching={watching}
-        showWatching={watchList.length > 0}
-        onQuote={next => {
-          setWatching(false);
-          setQuote(next);
-        }}
-        onWatching={() => setWatching(true)}
-        onSort={setSort}
-        onQuery={setQuery}
-      />
-      <MarketList quote={quote} sort={sort} query={query} watching={watching} watchKey={watchKey} />
+      <ErrorBoundary fallbackComponent={MarketsError}>
+        <MarketsChrome {...chrome} />
+        <Suspense fallback={<MarketsSkeleton />}>
+          <MarketsReady
+            quote={quote}
+            sort={sort}
+            query={query}
+            watching={watching}
+            watchKey={watchKey}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </View>
   );
 }
@@ -83,23 +126,11 @@ function MarketsError({
   );
 }
 
-function MarketsLoading(): JSX.Element {
-  const { theme } = useTheme();
+function MarketsSkeleton(): JSX.Element {
   return (
-    <View style={styles.body} testID="markets-loading">
-      <View style={styles.title}>
-        <Heading level="1" size="md">
-          Markets
-        </Heading>
-      </View>
+    <View style={styles.list} testID="markets-loading">
       {Array.from({ length: 11 }, (_, index) => (
-        <View
-          key={index}
-          style={[styles.skeletonRow, { borderBottomColor: theme.semantic.color.borderSubtle }]}
-        >
-          <Skeleton style={styles.skeletonName} />
-          <Skeleton style={styles.skeletonPrice} />
-        </View>
+        <MarketSkeletonRow key={index} />
       ))}
     </View>
   );
@@ -149,8 +180,8 @@ export default function HomeScreen(): JSX.Element {
   }, []);
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
-      <AsyncBoundary fallback={<MarketsLoading />} errorComponent={MarketsError}>
-        <Markets />
+      <AsyncBoundary fallback={<View style={styles.body} />} errorComponent={MarketsError}>
+        <MarketsShell />
       </AsyncBoundary>
     </SafeAreaView>
   );
@@ -163,25 +194,12 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
   },
+  list: {
+    flex: 1,
+  },
   title: {
-    height: 48,
+    height: 44,
     justifyContent: 'center',
     paddingHorizontal: 12,
-  },
-  skeletonRow: {
-    height: MARKET_ROW_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  skeletonName: {
-    width: 72,
-    height: 14,
-  },
-  skeletonPrice: {
-    width: 88,
-    height: 14,
   },
 });
