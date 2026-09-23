@@ -1,6 +1,6 @@
-import { Entity, RestEndpoint } from '@data-client/rest';
+import { Entity } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
+import { VisionEndpoint } from './hosts';
 
 export type Level = [price: number, qty: number];
 
@@ -152,13 +152,10 @@ function mergeLevels(
   return next;
 }
 
-export const getOrderBook = new RestEndpoint({
-  urlPrefix: BINANCE_REST,
+export const getOrderBook = new VisionEndpoint({
   path: '/depth',
   searchParams: {} as { symbol: string },
   schema: OrderBook,
-  getRequestInit: binanceGetInit,
-  errorPolicy: keepLastRead,
   searchToString(searchParams: Record<string, unknown>) {
     return new URLSearchParams({
       symbol: String(searchParams.symbol ?? ''),

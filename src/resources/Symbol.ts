@@ -1,6 +1,6 @@
 import { Entity, RestEndpoint } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
+import { VisionEndpoint } from './hosts';
 import { Ticker } from './Ticker';
 
 export type InstrumentFilters = {
@@ -115,12 +115,9 @@ export class MarketSymbol extends Entity {
   }
 }
 
-export const getExchangeInfo = new RestEndpoint({
-  urlPrefix: BINANCE_REST,
+export const getExchangeInfo = new VisionEndpoint({
   path: '/exchangeInfo',
   schema: { symbols: [MarketSymbol] },
-  getRequestInit: binanceGetInit,
-  errorPolicy: keepLastRead,
   dataExpiryLength: Infinity,
   url() {
     return `${RestEndpoint.prototype.url.call(this)}?showPermissionSets=false`;

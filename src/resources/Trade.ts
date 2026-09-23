@@ -1,6 +1,6 @@
-import { Collection, Entity, RestEndpoint } from '@data-client/rest';
+import { Collection, Entity } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
+import { VisionEndpoint } from './hosts';
 
 export const TAPE_LIMIT = 100;
 
@@ -73,13 +73,10 @@ function idsOf(value: unknown): readonly string[] {
   return Array.isArray(value) ? value : [];
 }
 
-export const getTrades = new RestEndpoint({
-  urlPrefix: BINANCE_REST,
+export const getTrades = new VisionEndpoint({
   path: '/aggTrades',
   searchParams: {} as { symbol: string },
   schema: tape,
-  getRequestInit: binanceGetInit,
-  errorPolicy: keepLastRead,
   searchToString(searchParams: Record<string, unknown>) {
     return new URLSearchParams({
       symbol: String(searchParams.symbol ?? ''),

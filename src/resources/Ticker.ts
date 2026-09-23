@@ -1,6 +1,6 @@
-import { Entity, RestEndpoint } from '@data-client/rest';
+import { Entity } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
+import { VisionEndpoint } from './hosts';
 
 type TickerInput = {
   symbol?: string;
@@ -94,10 +94,7 @@ export class Ticker extends Entity {
   }
 }
 
-export const getTickers = new RestEndpoint({
-  urlPrefix: BINANCE_REST,
+export const getTickers = new VisionEndpoint({
   path: '/ticker/24hr',
   schema: [Ticker],
-  getRequestInit: binanceGetInit,
-  errorPolicy: keepLastRead,
 });
