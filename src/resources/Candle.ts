@@ -1,6 +1,6 @@
-import { Collection, Entity, RestEndpoint } from '@data-client/rest';
+import { Collection, Entity } from '@data-client/rest';
 
-import { BINANCE_REST, binanceGetInit, keepLastRead } from './hosts';
+import { VisionEndpoint } from './hosts';
 
 export const INTERVALS = [
   { label: '1m', value: '1m' },
@@ -112,13 +112,10 @@ export const upsertCandle = CandleList.addWith((existing: string[], incoming: st
   return [...existing, ...added].slice(-CANDLE_LIMIT);
 });
 
-export const getCandles = new RestEndpoint({
-  urlPrefix: BINANCE_REST,
+export const getCandles = new VisionEndpoint({
   path: '/klines',
   searchParams: {} as { symbol: string; interval: CandleInterval },
   schema: CandleList,
-  getRequestInit: binanceGetInit,
-  errorPolicy: keepLastRead,
   searchToString(params: Record<string, unknown>) {
     return new URLSearchParams({
       symbol: String(params.symbol ?? ''),

@@ -1,8 +1,8 @@
-import { Entity, RestEndpoint } from '@data-client/rest';
+import { Entity } from '@data-client/rest';
 
 import { tokenInfoUrl } from './binanceSite';
 import { SITE } from './binanceSitePaths';
-import { binanceGetInit, keepLastRead } from './hosts';
+import { BinanceGet } from './hosts';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -218,12 +218,10 @@ export class AssetProfile extends Entity {
 
 type AssetEnvelope = { success?: unknown; data?: unknown };
 
-export const getAssets = new RestEndpoint({
+export const getAssets = new BinanceGet({
   urlPrefix: SITE,
   path: '/bapi/asset/v2/public/asset/asset/get-all-asset',
   schema: { data: [Asset] },
-  getRequestInit: binanceGetInit,
-  errorPolicy: keepLastRead,
   dataExpiryLength: HOUR,
   process(value: unknown) {
     if (!value || typeof value !== 'object') throw new Error('Invalid asset list');
@@ -233,12 +231,10 @@ export const getAssets = new RestEndpoint({
   },
 });
 
-export const getAssetProfile = new RestEndpoint({
+export const getAssetProfile = new BinanceGet({
   path: '/bapi/apex/v1/friendly/apex/marketing/web/token-info',
   searchParams: {} as { symbol: string },
   schema: { data: AssetProfile },
-  getRequestInit: binanceGetInit,
-  errorPolicy: keepLastRead,
   dataExpiryLength: HOUR,
   /** Native calls www.binance.com. `yarn web` uses the dev proxy. Release web does not call this. */
   url(params: { symbol?: string } = {}) {
