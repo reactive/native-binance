@@ -42,7 +42,7 @@ import { DataProvider, getDefaultManagers, useController } from '@data-client/re
 import type { Controller } from '@data-client/react';
 import { mockInitialState, MockResolver } from '@data-client/test';
 import { useState } from 'react';
-import { AccessibilityInfo, Dimensions, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Animated, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
@@ -293,6 +293,14 @@ afterEach(() => {
   restoreSocket();
   jest.useRealTimers();
   jest.restoreAllMocks();
+  // spyOn on the preset's jest.fn does not register a restore, so
+  // mockResolvedValue(true) would stick for every later test.
+  (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockImplementation(() =>
+    Promise.resolve(false),
+  );
+  (AccessibilityInfo.addEventListener as jest.Mock).mockImplementation(() => ({
+    remove() {},
+  }));
 });
 
 const current15 = () => seed('15m', period(NOW, '15m'), 111);
@@ -640,4 +648,54 @@ it('cuts to a ready interval in one commit when reduce motion is on', async () =
   expect(present('chart-loading')).toBe(false);
   expect(fetches).toEqual([]);
   expect(textOf('candle-close')).toBe('222');
+});
+
+it('fades in again when a series mounts a second time', async () => {
+  mount({
+    interval: '15m',
+    seeds: [current15()],
+    delay: () => 0,
+    resolve: params => [row(period(Date.now(), params.interval), params.interval === '1h' ? 222 : 111)],
+  });
+  await settle();
+  await press('interval-1h');
+  await advance(270);
+  expect(present('candle-series-1h')).toBe(true);
+  expect(present('candle-series-15m')).toBe(false);
+
+  const timing = jest.spyOn(Animated, 'timing');
+  await press('interval-15m');
+  await advance(90);
+  const fadeIn = timing.mock.calls.filter((call) => {
+    const config = call[1] as { toValue?: number } | undefined;
+    return config?.toValue === 1;
+  });
+  expect(fadeIn.length).toBeGreaterThan(0);
+  expect(present('candle-series-15m')).toBe(true);
+  await advance(180);
+  expect(textOf('candle-close')).toBe('111');
+});
+
+it('keeps a cached reveal when an abandoned fetch finishes during the caption', async () => {
+  mount({
+    interval: '15m',
+    seeds: [current15(), seed('4h', period(NOW, '4h'), 333)],
+    delay: interval => (interval === '1h' ? 500 : 0),
+    resolve: params => [row(period(Date.now(), params.interval), params.interval === '4h' ? 333 : 222)],
+  });
+  await settle();
+  await press('interval-1h');
+  await advance(450);
+  expect(textOf('chart-caption')).toBe('Loading 1h candles');
+  expect(present('candle-series-1h')).toBe(false);
+
+  await press('interval-4h');
+  await advance(40);
+  expect(present('candle-series-4h')).toBe(false);
+  await advance(220);
+  expect(present('candle-series-4h')).toBe(true);
+  expect(present('candle-series-1h')).toBe(false);
+  expect(present('load-error')).toBe(false);
+  expect(present('chart-loading')).toBe(false);
+  expect(textOf('candle-close')).toBe('333');
 });

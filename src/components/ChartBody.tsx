@@ -71,6 +71,8 @@ type Published = {
 type SeriesHandle = {
   opacity: () => number;
   fadeTo: (to: number, duration: number, curve: 'in' | 'out') => void;
+  /** The value created for this mount. A remount gets a new one. */
+  value: Animated.Value;
 };
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
@@ -411,7 +413,11 @@ const LiveSeries = forwardRef(function LiveSeries(
     [opacity, opacityNow],
   );
 
-  useImperativeHandle(ref, () => ({ opacity: opacityNow, fadeTo }), [fadeTo, opacityNow]);
+  useImperativeHandle(
+    ref,
+    () => ({ opacity: opacityNow, fadeTo, value: opacity }),
+    [fadeTo, opacity, opacityNow],
+  );
 
   useLayoutEffect(() => {
     onPublish({ interval, candles: painted, opacity });
@@ -483,7 +489,7 @@ function ChartFrame({
   const frozenRef = useRef<readonly Candle[] | null>(null);
   const acceptedRef = useRef<CandleInterval | null>(null);
   const failedRef = useRef<CandleInterval | null>(null);
-  const revealedRef = useRef<CandleInterval | null>(null);
+  const revealedRef = useRef<Animated.Value | null>(null);
   const wait = useRef({
     startedAt: null as number | null,
     generation: 0,
@@ -551,6 +557,8 @@ function ChartFrame({
 
   const scheduleReveal = useCallback(
     (interval: CandleInterval) => {
+      // A fetch the user already left must not clear the reveal that replaced it.
+      if (requestedRef.current !== interval) return false;
       if (phaseRef.current.kind === 'out') return;
       const at = revealAt(wait.current.startedAt, Date.now(), Date.now());
       const delay = at - Date.now();
@@ -707,8 +715,9 @@ function ChartFrame({
   const onLayout = useCallback(() => {
     const current = phaseRef.current;
     if (current.kind !== 'in') return;
-    if (revealedRef.current === current.interval) return;
-    revealedRef.current = current.interval;
+    const value = seriesRef.current?.value;
+    if (!value || revealedRef.current === value) return;
+    revealedRef.current = value;
     setCaption(false);
     const duration = reduceRef.current ? 0 : FADE_IN_MS;
     seriesRef.current?.fadeTo(1, duration, 'in');
