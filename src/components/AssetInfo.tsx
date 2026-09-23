@@ -5,9 +5,16 @@ import type { JSX, ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { formatDeadline } from '@/components/formatDeadline';
-import { Asset, getAssetProfile, getAssets, type AssetCaution } from '@/resources/Asset';
+import {
+  Asset,
+  getAssetProfile,
+  getAssets,
+  readingPath,
+  type AssetCaution,
+  type AssetProfile,
+} from '@/resources/Asset';
 
-const GAP = 32;
+const GAP = 20;
 const HEADER = 56;
 const ROW = 48;
 const GUTTER = 12;
@@ -220,27 +227,14 @@ function LinkRow({
   );
 }
 
-function ProfileLinks({ asset }: { asset: Asset }): JSX.Element | null {
-  const loaded = useSuspense(getAssetProfile, { symbol: asset.assetCode });
-  const profile = loaded.data;
-  if (!profile) return null;
-  const rows: { testID: string; line1: string; line2: string; url: string }[] = [];
-  if (profile.academyUrl) {
-    rows.push({
-      testID: 'asset-academy',
-      line1: `What is ${asset.name}?`,
-      line2: 'Binance Academy',
-      url: profile.academyUrl,
-    });
-  }
-  if (profile.researchUrl) {
-    rows.push({
-      testID: 'asset-research',
-      line1: `${asset.name} research`,
-      line2: 'Binance Research',
-      url: profile.researchUrl,
-    });
-  }
+function PathRows({
+  asset,
+  profile,
+}: {
+  asset: Asset;
+  profile: AssetProfile | null | undefined;
+}): JSX.Element | null {
+  const rows = readingPath(asset, profile);
   if (rows.length === 0) return null;
   const caution = asset.caution != null;
   return (
@@ -259,6 +253,11 @@ function ProfileLinks({ asset }: { asset: Asset }): JSX.Element | null {
   );
 }
 
+function ProfileLinks({ asset }: { asset: Asset }): JSX.Element | null {
+  const loaded = useSuspense(getAssetProfile, { symbol: asset.assetCode });
+  return <PathRows asset={asset} profile={loaded.data} />;
+}
+
 function AssetLoaded({
   base,
   fetchProfile,
@@ -274,10 +273,13 @@ function AssetLoaded({
       <AssetHeader code={base} state="ready" name={asset.name} kinds={asset.kinds} />
       {asset.caution ? <CautionRow caution={asset.caution} /> : null}
       {fetchProfile ?
-        <AsyncBoundary fallback={null} errorComponent={() => null}>
+        <AsyncBoundary
+          fallback={null}
+          errorComponent={() => <PathRows asset={asset} profile={undefined} />}
+        >
           <ProfileLinks asset={asset} />
         </AsyncBoundary>
-      : null}
+      : <PathRows asset={asset} profile={undefined} />}
     </View>
   );
 }
