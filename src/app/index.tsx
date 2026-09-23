@@ -141,7 +141,12 @@ export default function HomeScreen(): JSX.Element {
   const controller = useController();
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    // The lazy route's first render is still inside the route promise. getWatching
+    // settles in that turn, before DataProvider has committed, and React drops the
+    // store update. Wait until this screen has committed before suspending on it.
+    setMounted(true);
     // The symbol route is its own bundle. Load it while this screen is online
     // so opening a market still works after the network drops.
     void import('./symbol/[symbol]');
@@ -181,7 +186,7 @@ export default function HomeScreen(): JSX.Element {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
       <AsyncBoundary fallback={<View style={styles.body} />} errorComponent={MarketsError}>
-        <MarketsShell />
+        {mounted ? <MarketsShell /> : null}
       </AsyncBoundary>
     </SafeAreaView>
   );
