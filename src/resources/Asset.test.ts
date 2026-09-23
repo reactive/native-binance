@@ -71,7 +71,7 @@ it('stores the deadline as milliseconds and reads a Date', () => {
   expect(usdp.pdTradeDeadline?.toISOString()).toBe('2026-09-24T03:00:00.000Z');
   expect(usdp.caution?.kind).toBe('preDelist');
   expect(usdp.caution?.deadline?.toISOString()).toBe('2026-09-24T03:00:00.000Z');
-  expect(Asset.schema.pdTradeDeadline(1790218800000).toISOString()).toBe('2026-09-24T03:00:00.000Z');
+  expect(Asset.schema.pdTradeDeadline(1790218800000)).toEqual(new Date(1790218800000));
 });
 
 it('keeps raw fields, including ones this screen does not read', () => {
@@ -151,6 +151,24 @@ it('reads renamed-from when nothing riskier matches', () => {
   });
   expect(found.caution).toMatchObject({ kind: 'renamedFrom', code: 'KLAY', link: announce });
   expect(found.kinds).toEqual(['Layer 1 / Layer 2']);
+});
+
+it('keeps a null pre-delist deadline absent', () => {
+  const found = read('NODEADLINE', {
+    assetName: 'No Deadline',
+    preDelist: true,
+    pdTradeDeadline: null,
+    pdAnnounceUrl: announce,
+  });
+  expect(found.pdTradeDeadline).toBeNull();
+  expect(found.caution).toEqual({
+    kind: 'preDelist',
+    code: 'NODEADLINE',
+    deadline: undefined,
+    link: announce,
+  });
+  expect(Asset.schema.pdTradeDeadline(null)).toBeNull();
+  expect(Asset.schema.pdTradeDeadline(undefined)).toBeNull();
 });
 
 it('marks a passed pre-delist deadline as delisted and keeps the link', () => {

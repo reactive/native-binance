@@ -126,9 +126,11 @@ export class Asset extends Entity {
   /**
    * `unvisit` calls a field schema as `schema(input)`, without `new`.
    * `Date(ms)` returns the current time as a string. It does not construct a Date.
+   * `new Date(null)` is the Unix epoch, so a missing deadline stays null.
    */
   static schema = {
-    pdTradeDeadline: (ms: number) => new Date(ms),
+    pdTradeDeadline: (ms: number | null | undefined) =>
+      typeof ms === 'number' ? new Date(ms) : null,
   };
 
   get name(): string {
