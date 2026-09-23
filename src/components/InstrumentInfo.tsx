@@ -137,7 +137,7 @@ export function InstrumentInfo({ symbol }: { symbol: string }): JSX.Element {
         lined={false}
         line={line}
       />
-      <AssetSection base={instrument.baseAsset} line={line} />
+      <AssetSection base={instrument.baseAsset} />
     </ScrollView>
   );
 }

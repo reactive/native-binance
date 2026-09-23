@@ -1,5 +1,5 @@
 import { AsyncBoundary, useFetch, useQuery, useSuspense } from '@data-client/react';
-import { Badge, Skeleton, Text } from '@reactive/silk-native';
+import { Badge, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import * as Linking from 'expo-linking';
 import type { JSX, ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
@@ -191,15 +191,14 @@ function LinkRow({
   line2,
   url,
   lined,
-  line,
 }: {
   testID: string;
   line1: string;
   line2: string;
   url: string;
   lined: boolean;
-  line: string;
 }): JSX.Element {
+  const { theme } = useTheme();
   return (
     <Pressable
       testID={testID}
@@ -208,7 +207,11 @@ function LinkRow({
       accessibilityLabel={`${line1}, ${line2}`}
       accessibilityHint="Opens in the browser"
       onPress={() => openLink(url)}
-      style={[styles.row, lined ? styles.lined : null, lined ? { borderTopColor: line } : null]}
+      style={[
+        styles.row,
+        lined ? styles.lined : null,
+        lined ? { borderTopColor: theme.semantic.color.borderSubtle } : null,
+      ]}
     >
       <A11yGroup row>
         <Stack line1={line1} line2={line2} />
@@ -217,13 +220,7 @@ function LinkRow({
   );
 }
 
-function ProfileLinks({
-  asset,
-  line,
-}: {
-  asset: Asset;
-  line: string;
-}): JSX.Element | null {
+function ProfileLinks({ asset }: { asset: Asset }): JSX.Element | null {
   const loaded = useSuspense(getAssetProfile, { symbol: asset.assetCode });
   const profile = loaded.data;
   if (!profile) return null;
@@ -256,7 +253,6 @@ function ProfileLinks({
           line2={row.line2}
           url={row.url}
           lined={index > 0 || caution}
-          line={line}
         />
       ))}
     </>
@@ -266,11 +262,9 @@ function ProfileLinks({
 function AssetLoaded({
   base,
   fetchProfile,
-  line,
 }: {
   base: string;
   fetchProfile: boolean;
-  line: string;
 }): JSX.Element {
   useSuspense(getAssets);
   const asset = useQuery(Asset, { assetCode: base });
@@ -281,22 +275,16 @@ function AssetLoaded({
       {asset.caution ? <CautionRow caution={asset.caution} /> : null}
       {fetchProfile ?
         <AsyncBoundary fallback={null} errorComponent={() => null}>
-          <ProfileLinks asset={asset} line={line} />
+          <ProfileLinks asset={asset} />
         </AsyncBoundary>
       : null}
     </View>
   );
 }
 
-function AssetFetch({
-  base,
-  fetchProfile,
-  line,
-}: {
-  base: string;
-  fetchProfile: boolean;
-  line: string;
-}): JSX.Element {
+/** Asset block under the instrument rows. Renders nothing until the caller has a base code. */
+export function AssetSection({ base }: { base: string }): JSX.Element {
+  const fetchProfile = !(Platform.OS === 'web' && !__DEV__);
   useFetch(getAssetProfile, fetchProfile ? { symbol: base } : null);
   return (
     <View>
@@ -305,16 +293,10 @@ function AssetFetch({
         fallback={<AssetHeader code={base} state="loading" />}
         errorComponent={() => <AssetHeader code={base} state="failed" />}
       >
-        <AssetLoaded base={base} fetchProfile={fetchProfile} line={line} />
+        <AssetLoaded base={base} fetchProfile={fetchProfile} />
       </AsyncBoundary>
     </View>
   );
-}
-
-/** Asset block under the instrument rows. Renders nothing until the caller has a base code. */
-export function AssetSection({ base, line }: { base: string; line: string }): JSX.Element {
-  const fetchProfile = !(Platform.OS === 'web' && !__DEV__);
-  return <AssetFetch base={base} fetchProfile={fetchProfile} line={line} />;
 }
 
 const styles = StyleSheet.create({
