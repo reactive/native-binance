@@ -29,7 +29,7 @@ const PAIR_MAX = 296;
 const STATUS_MAX = 92;
 const INDICATOR_PX = 8;
 
-const SEGMENTS = ['Book', 'Trades', 'Chart', 'Info'] as const;
+const SEGMENTS = ['Chart', 'Info', 'Book', 'Trades'] as const;
 type Segment = (typeof SEGMENTS)[number];
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
@@ -362,7 +362,7 @@ function streamUrls(symbol: string, segment: Segment, interval: CandleInterval):
 
 export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Element {
   const { theme } = useTheme();
-  const [segment, setSegment] = useState<Segment>('Book');
+  const [segment, setSegment] = useState<Segment>('Chart');
   const [chartInterval, setChartInterval] = useState<CandleInterval>('15m');
   const [retry, setRetry] = useState(0);
   const streams = useMemo(

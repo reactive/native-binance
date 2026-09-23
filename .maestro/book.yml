@@ -9,6 +9,12 @@ appId: dev.reactive.nativebinance
     id: market-BTCUSDT
 - extendedWaitUntil:
     visible:
+      id: segment-book
+    timeout: 90000
+- tapOn:
+    id: segment-book
+- extendedWaitUntil:
+    visible:
       id: best-bid
     timeout: 90000
 - assertVisible:
