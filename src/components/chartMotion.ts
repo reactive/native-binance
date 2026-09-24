@@ -50,6 +50,15 @@ export function periodStart(now: number, interval: CandleInterval): number {
   return Math.floor(now / ms) * ms;
 }
 
+/** Next period start. Months use the calendar; everything else is a fixed length. */
+export function periodEnd(openTime: number, interval: CandleInterval): number {
+  if (interval === '1M') {
+    const date = new Date(openTime);
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
+  }
+  return openTime + intervalMs(interval);
+}
+
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
 
 /**

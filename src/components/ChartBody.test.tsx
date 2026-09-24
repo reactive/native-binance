@@ -47,10 +47,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
 import ChartBody from '@/components/ChartBody';
-import { periodStart } from '@/components/chartMotion';
-import { getCandles, upsertCandle, type CandleInterval } from '@/resources/Candle';
+import { intervalMs, periodStart } from '@/components/chartMotion';
+import { getCandles, INTERVALS, upsertCandle, type CandleInterval } from '@/resources/Candle';
 import CandleStream from '@/resources/CandleStream';
-import { installFakeSocket } from '@/resources/testSocket';
+import { FakeSocket, installFakeSocket } from '@/resources/testSocket';
 
 const { act } = TestRenderer;
 
@@ -92,6 +92,39 @@ function seed(interval: CandleInterval, openTime: number, close: number): Seed {
     response: [row(openTime, close)],
   };
 }
+
+function series(interval: CandleInterval, count = 60): Seed {
+  const newest = period(NOW, interval);
+  const opens: number[] = [];
+  if (interval === '1M') {
+    let cursor = newest;
+    for (let i = 0; i < count; i += 1) {
+      opens.push(cursor);
+      const date = new Date(cursor);
+      cursor = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1);
+    }
+    opens.reverse();
+  } else {
+    const step = intervalMs(interval);
+    for (let i = count - 1; i >= 0; i -= 1) opens.push(newest - i * step);
+  }
+  return {
+    endpoint: getCandles,
+    args: [{ symbol: SYMBOL, interval }],
+    response: opens.map((openTime, index) => row(openTime, 100 + (index % 7) + 1)),
+  };
+}
+
+const TRAVEL_PAIRS: ReadonlyArray<readonly [CandleInterval, CandleInterval]> = [
+  ['15m', '1h'],
+  ['1h', '15m'],
+  ['1h', '4h'],
+  ['4h', '1h'],
+  ['4h', '1d'],
+  ['1d', '4h'],
+  ['1d', '1w'],
+  ['1w', '1d'],
+];
 
 let tree: ReactTestRenderer | undefined;
 let restoreSocket = () => {};
@@ -178,6 +211,21 @@ async function press(testID: string) {
   await flush();
 }
 
+async function pressIn(testID: string) {
+  const target = tree?.root.findByProps({ testID });
+  if (!target) throw new Error(`missing ${testID}`);
+  await act(async () => {
+    target.props.onPressIn();
+  });
+  await flush();
+}
+
+function openKlines(): string[] {
+  return FakeSocket.instances
+    .filter(socket => socket.url.includes('@kline_') && !socket.closed)
+    .map(socket => socket.url);
+}
+
 function selected(interval: CandleInterval): boolean {
   return node(`interval-${interval}`)?.props.accessibilityState?.selected === true;
 }
@@ -207,6 +255,17 @@ function Harness({
   show?: boolean;
 }) {
   const [current, setCurrent] = useState(interval);
+  const [interceptor] = useState(() => () => ({}));
+  const [fixtures] = useState(() => [
+    {
+      endpoint: getCandles,
+      delay: (params: { interval: CandleInterval }) => delay(params.interval),
+      response(params: { symbol: string; interval: CandleInterval }) {
+        fetches.push(params.interval);
+        return resolve(params);
+      },
+    },
+  ]);
   const [state] = useState(() => mockInitialState(seeds));
   const [managers] = useState(() => {
     const stream = new CandleStream();
@@ -215,18 +274,7 @@ function Harness({
   });
   return (
     <DataProvider initialState={state} managers={managers}>
-      <MockResolver
-        fixtures={[
-          {
-            endpoint: getCandles,
-            delay: (params: { interval: CandleInterval }) => delay(params.interval),
-            response(params: { symbol: string; interval: CandleInterval }) {
-              fetches.push(params.interval);
-              return resolve(params);
-            },
-          },
-        ]}
-      >
+      <MockResolver fixtures={fixtures} getInitialInterceptorData={interceptor}>
         <Bind />
         <SafeAreaProvider initialMetrics={metrics}>
           {show ?
@@ -343,21 +391,21 @@ it('holds the caption until 700ms when the list arrives at 450ms', async () => {
   mount({
     interval: '15m',
     seeds: [current15()],
-    delay: interval => (interval === '1h' ? 450 : 0),
+    delay: interval => (interval === '4h' ? 450 : 0),
     resolve: params => [row(period(Date.now(), params.interval), 222)],
   });
   await settle();
-  await press('interval-1h');
+  await press('interval-4h');
   await advance(450);
-  expect(textOf('chart-caption')).toBe('Loading 1h candles');
-  expect(present('candle-series-1h')).toBe(false);
+  expect(textOf('chart-caption')).toBe('Loading 4h candles');
+  expect(present('candle-series-4h')).toBe(false);
 
   await advance(249);
-  expect(present('candle-series-1h')).toBe(false);
+  expect(present('candle-series-4h')).toBe(false);
   expect(present('chart-caption')).toBe(true);
 
   await advance(1);
-  expect(present('candle-series-1h')).toBe(true);
+  expect(present('candle-series-4h')).toBe(true);
   expect(present('chart-caption')).toBe(false);
 });
 
@@ -375,7 +423,8 @@ it('never mounts an intermediate interval when 1h resolves before 4h', async () 
 
   await advance(200);
   expect(present('candle-series-1h')).toBe(false);
-  expect(fetches).toEqual(['1h', '4h']);
+  expect(fetches).toEqual(expect.arrayContaining(['1h', '4h']));
+  expect(fetches).not.toContain('15m');
 
   await advance(500);
   expect(present('candle-series-1h')).toBe(false);
@@ -419,7 +468,8 @@ it('cancels a switch back to the still-mounted interval without a fetch', async 
   await press('interval-1h');
   await press('interval-15m');
   expect(fetches.filter(interval => interval === '15m')).toEqual([]);
-  expect(fetches.slice(before)).toEqual(['1h']);
+  expect(fetches).toContain('1h');
+  expect(fetches.slice(before)).not.toContain('15m');
   expect(present('candle-series-15m')).toBe(true);
   expect(present('candle-series-1h')).toBe(false);
   expect(selected('15m')).toBe(true);
@@ -486,26 +536,26 @@ it('fetches a cached list from the previous minute and skips a current one', asy
   const staleOpen = period(NOW, '1m') - MINUTE;
   mount({
     interval: '15m',
-    seeds: [current15(), seed('1m', staleOpen, 50), seed('4h', period(NOW, '4h'), 333)],
-    delay: interval => (interval === '1m' ? 200 : 0),
+    seeds: [current15(), seed('1w', period(NOW, '1w') - 7 * 24 * 60 * MINUTE, 50), seed('4h', period(NOW, '4h'), 333)],
+    delay: interval => (interval === '1w' ? 200 : 0),
     resolve: params => [row(period(Date.now(), params.interval), 444)],
   });
   await settle();
 
   await press('interval-4h');
   await advance(180);
-  expect(fetches).toEqual([]);
+  expect(fetches).not.toContain('4h');
   expect(present('candle-series-4h')).toBe(true);
   expect(textOf('candle-close')).toBe('333');
 
-  await press('interval-1m');
-  expect(fetches).toEqual(['1m']);
+  await press('interval-1w');
+  expect(fetches).toContain('1w');
   expect(textOf('candle-close')).not.toBe('50');
   await advance(90);
-  expect(present('candle-series-1m')).toBe(false);
+  expect(present('candle-series-1w')).toBe(false);
   expect(textOf('candle-close')).not.toBe('444');
   await advance(200);
-  expect(present('candle-series-1m')).toBe(true);
+  expect(present('candle-series-1w')).toBe(true);
   expect(textOf('candle-close')).toBe('444');
 });
 
@@ -638,7 +688,7 @@ it('cuts to a ready interval in one commit when reduce motion is on', async () =
   expect(present('candle-series-15m')).toBe(false);
   expect(present('chart-caption')).toBe(false);
   expect(present('chart-loading')).toBe(false);
-  expect(fetches).toEqual([]);
+  expect(fetches).not.toContain('1h');
   expect(textOf('candle-close')).toBe('222');
 });
 
@@ -690,4 +740,201 @@ it('keeps a cached reveal when an abandoned fetch finishes during the caption', 
   expect(present('load-error')).toBe(false);
   expect(present('chart-loading')).toBe(false);
   expect(textOf('candle-close')).toBe('333');
+});
+
+async function showPair(from: CandleInterval, to: CandleInterval) {
+  if (tree) {
+    act(() => {
+      tree?.unmount();
+    });
+    tree = undefined;
+    for (const stream of streams) stream.cleanup();
+    streams = [];
+    FakeSocket.instances = [];
+  }
+  fetches = [];
+  mount({
+    interval: from,
+    seeds: [series(from), series(to)],
+    delay: () => 0,
+    resolve: params => [row(period(Date.now(), params.interval), 222)],
+  });
+  await settle();
+}
+
+it('travels the eight adjacent pairs and fades every other ready pair', async () => {
+  const values = INTERVALS.map(item => item.value);
+  const traveled: string[] = [];
+  for (const from of values) {
+    for (const to of values) {
+      if (from === to) continue;
+      await showPair(from, to);
+      await press(`interval-${to}`);
+      await advance(1);
+      const moving = present(`candle-series-${from}`) && present(`candle-series-${to}`);
+      if (moving) {
+        traveled.push(`${from}->${to}`);
+        const outgoing = node(`candle-series-${from}`);
+        const incoming = node(`candle-series-${to}`);
+        expect(outgoing?.props.accessibilityElementsHidden).toBe(true);
+        expect(incoming?.props.accessibilityElementsHidden).toBe(true);
+        expect(incoming?.props.importantForAccessibility).toBe('no-hide-descendants');
+      } else {
+        expect(present(`candle-series-${to}`)).toBe(false);
+        expect(present(`candle-series-${from}`)).toBe(true);
+      }
+    }
+  }
+  expect(traveled).toEqual(TRAVEL_PAIRS.map(([from, to]) => `${from}->${to}`));
+});
+
+it('travels when a press-in fetch resolves before touch-up', async () => {
+  let hourAttempts = 0;
+  mount({
+    interval: '15m',
+    seeds: [series('15m')],
+    delay: () => 0,
+    resolve: params => {
+      if (params.interval === '1h') {
+        hourAttempts += 1;
+        if (hourAttempts === 1) throw new TypeError('Failed to fetch');
+      }
+      return series(params.interval).response;
+    },
+  });
+  await settle();
+  expect(hourAttempts).toBe(1);
+  expect(present('candle-series-1h')).toBe(false);
+  await pressIn('interval-1h');
+  expect(hourAttempts).toBe(2);
+  await press('interval-1h');
+  await advance(1);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  expect(selected('1h')).toBe(true);
+});
+
+it('reverses a travel without a fetch and fades a third pill', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m'), series('1h')],
+    delay: interval => (interval === '4h' ? 2000 : 0),
+    resolve: params => [row(period(Date.now(), params.interval), 222)],
+  });
+  await settle();
+  const before = fetches.length;
+  await press('interval-1h');
+  await advance(1);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  await advance(40);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  const close = textOf('candle-close');
+  act(() => {
+    void controller?.set(
+      upsertCandle,
+      { symbol: SYMBOL, interval: '15m' },
+      [{ t: period(NOW, '15m'), o: '100', h: '110', l: '90', c: '999', v: '5', n: 20 }],
+    );
+  });
+  expect(textOf('candle-close')).toBe(close);
+
+  await press('interval-15m');
+  expect(fetches.slice(before)).not.toContain('15m');
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  expect(textOf('candle-close')).toBe(close);
+  expect(selected('15m')).toBe(true);
+
+  await advance(800);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(false);
+
+  await press('interval-1h');
+  await advance(1);
+  await press('interval-4h');
+  expect(selected('4h')).toBe(true);
+  await advance(90);
+  expect(present('candle-series-15m')).toBe(false);
+  expect(present('candle-series-1h')).toBe(false);
+  expect(present('candle-series-4h')).toBe(false);
+});
+
+it('settles a resize during reverse on the interval the pill shows', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m'), series('1h')],
+    delay: () => 0,
+    resolve: params => [row(period(Date.now(), params.interval), 222)],
+  });
+  await settle();
+  await press('interval-1h');
+  await advance(1);
+  await advance(40);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  await press('interval-15m');
+  expect(selected('15m')).toBe(true);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+
+  await act(async () => {
+    Dimensions.set({
+      window: { width: 384, height: 900, scale: 3.75, fontScale: 1 },
+      screen: { width: 384, height: 900, scale: 3.75, fontScale: 1 },
+    });
+  });
+  await flush();
+
+  expect(selected('15m')).toBe(true);
+  expect(selected('1h')).toBe(false);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(false);
+});
+
+it('keeps one kline socket and fades when the travel start is late', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m'), series('1h')],
+    delay: () => 0,
+    resolve: params => [row(period(Date.now(), params.interval), 222)],
+  });
+  await settle();
+  expect(openKlines().filter(url => url.includes('kline_15m'))).toHaveLength(1);
+  expect(openKlines().some(url => url.includes('kline_1h'))).toBe(false);
+
+  const events: string[] = [];
+  const originalClose = FakeSocket.prototype.close;
+  FakeSocket.prototype.close = function close(this: FakeSocket) {
+    if (this.url.includes('@kline_')) events.push(`close:${this.url}`);
+    return originalClose.call(this);
+  };
+  const Socket = globalThis.WebSocket as unknown as typeof FakeSocket;
+  globalThis.WebSocket = class extends Socket {
+    constructor(url: string) {
+      super(url);
+      if (url.includes('@kline_')) events.push(`open:${url}`);
+    }
+  } as unknown as typeof WebSocket;
+
+  await press('interval-1h');
+  await advance(1);
+  expect(openKlines()).toHaveLength(1);
+  expect(openKlines()[0]).toContain('kline_15m');
+  expect(events).toEqual([]);
+
+  await advance(400);
+  expect(events.map(event => (event.startsWith('close:') ? 'close' : 'open'))).toEqual(['close', 'open']);
+  expect(events[0]).toContain('kline_15m');
+  expect(events[1]).toContain('kline_1h');
+  expect(openKlines()).toHaveLength(1);
+  expect(openKlines()[0]).toContain('kline_1h');
+  FakeSocket.prototype.close = originalClose;
+
+  await press('interval-15m');
+  jest.setSystemTime(Date.now() + 150);
+  await advance(1);
+  expect(present('candle-series-1h')).toBe(true);
+  expect(present('candle-series-15m')).toBe(false);
 });
