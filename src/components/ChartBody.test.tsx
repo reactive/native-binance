@@ -861,6 +861,38 @@ it('reverses a travel without a fetch and fades a third pill', async () => {
   expect(present('candle-series-4h')).toBe(false);
 });
 
+it('settles a resize during reverse on the interval the pill shows', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m'), series('1h')],
+    delay: () => 0,
+    resolve: params => [row(period(Date.now(), params.interval), 222)],
+  });
+  await settle();
+  await press('interval-1h');
+  await advance(1);
+  await advance(40);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  await press('interval-15m');
+  expect(selected('15m')).toBe(true);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+
+  await act(async () => {
+    Dimensions.set({
+      window: { width: 384, height: 900, scale: 3.75, fontScale: 1 },
+      screen: { width: 384, height: 900, scale: 3.75, fontScale: 1 },
+    });
+  });
+  await flush();
+
+  expect(selected('15m')).toBe(true);
+  expect(selected('1h')).toBe(false);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(false);
+});
+
 it('keeps one kline socket and fades when the travel start is late', async () => {
   mount({
     interval: '15m',

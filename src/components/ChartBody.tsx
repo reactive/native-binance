@@ -1241,10 +1241,11 @@ function ChartFrame({
     if (prev.width === width && prev.height === height) return;
     const current = phaseRef.current;
     if (current.kind !== 'travel') return;
-    current.session.reverse = false;
-    current.session.graph.progress.stopAnimation();
-    current.session.graph.progress.setValue(1);
-    finishTravel(current.session.plan.to);
+    const session = current.session;
+    const interval = requestedRef.current;
+    session.graph.progress.stopAnimation();
+    session.graph.progress.setValue(interval === session.plan.from ? 0 : 1);
+    finishTravel(interval);
   }, [finishTravel, height, width]);
 
   const mounted = mountedInterval(phase);
