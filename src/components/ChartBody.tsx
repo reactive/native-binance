@@ -1,4 +1,4 @@
-import { AsyncBoundary, useController, useLive, useQuery } from '@data-client/react';
+import { AsyncBoundary, useCache, useController, useLive, useQuery } from '@data-client/react';
 import { Text, useTheme } from '@reactive/silk-native';
 import {
   forwardRef,
@@ -38,11 +38,15 @@ import {
   revealAt,
 } from '@/components/chartMotion';
 import {
-  cameraTable,
-  neighbourIntervals,
+  labelStops,
+  placeCandles,
   planTravel,
-  shiftTable,
+  rowFetchOrder,
   travelSpring,
+  type PriceDomain,
+  type StepId,
+  type StepPlan,
+  type TravelCandle,
   type TravelPlan,
 } from '@/components/chartTravel';
 import { LoadError } from '@/components/LoadError';
@@ -65,6 +69,8 @@ const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
 // Jest's native animated mock ends the spring in 16ms without moving `p`.
 // The device still uses the native driver; web and tests run the same JS graph.
 const NATIVE_DRIVER = Platform.OS !== 'web' && process.env.JEST_WORKER_ID == null;
+// JavaScript springs timestamp independently, so web and Jest share one clock.
+const SHARE_CLOCK = !NATIVE_DRIVER;
 const LABELS = ['Open', 'High', 'Low', 'Close'] as const;
 
 type Phase =
@@ -101,65 +107,102 @@ type PlotMotion = {
   labelOpacity?: Axis;
 };
 
-type TravelGraph = {
+type StepGraph = {
   progress: Animated.Value;
-  finer: { scaleX: Axis; translateX: Axis; scaleY: Axis; translateY: Axis };
-  coarser: { scaleX: Axis; translateX: Axis; scaleY: Axis; translateY: Axis };
-  finerOpacity: Axis;
-  coveredOpacity: Axis;
-  labelOpacity: Axis;
-  shifts: ReadonlyMap<number, Shift>;
-  readoutOrigin: Axis;
-  readoutTarget: Axis;
+  scaleX: Axis;
+  translateX: Axis;
+  scaleY: Axis;
+  translateY: Axis;
+  layerOpacity: Axis;
+  coveredOpacity: Axis | null;
+  readoutOpacity: Axis;
+  shifts: Map<number, Shift>;
+  motion: PlotMotion;
+  forwardThreshold: number;
+  reverseThreshold: number;
 };
 
 type Session = {
   plan: TravelPlan;
-  graph: TravelGraph;
+  origin: readonly Candle[];
+  steps: StepGraph[];
+  clock: Animated.Value | null;
+  labelOpacity: Axis;
   reverse: boolean;
+  timers: ReturnType<typeof setTimeout>[];
 };
 
-function stepOpacity(progress: Animated.Value, at: number, showAfter: boolean): Axis {
+function opacityOf(progress: Animated.Value, stops: { input: number[]; output: number[] }): Axis {
   return progress.interpolate({
-    inputRange: [0, at, at, 1],
-    outputRange: showAfter ? [0, 0, 1, 1] : [1, 1, 0, 0],
+    inputRange: stops.input,
+    outputRange: stops.output,
     extrapolate: 'clamp',
   });
 }
 
-function buildGraph(plan: TravelPlan): TravelGraph {
-  const progress = new Animated.Value(0);
-  const axis = (role: 'finer' | 'coarser') => {
-    const table = cameraTable(plan, role);
-    const range = { inputRange: table.input, extrapolate: 'clamp' as const };
-    return {
-      scaleX: progress.interpolate({ ...range, outputRange: table.scaleX }),
-      translateX: progress.interpolate({ ...range, outputRange: table.translateX }),
-      scaleY: progress.interpolate({ ...range, outputRange: table.scaleY }),
-      translateY: progress.interpolate({ ...range, outputRange: table.translateY }),
-    };
-  };
-  const finerOpacity = stepOpacity(progress, plan.pH, !plan.zoomOut);
-  const coveredOpacity = stepOpacity(progress, plan.pH, plan.zoomOut);
-  const shifts = new Map<number, Shift>();
-  for (const [openTime, centre] of plan.centres) {
-    const raw = progress.interpolate({
-      inputRange: plan.knots.map(knot => knot.p),
-      outputRange: shiftTable(plan, centre),
+function attachShifts(graph: StepGraph, step: StepPlan) {
+  if (!step.perCandle || graph.shifts.size > 0) return;
+  for (const [openTime, output] of step.shifts) {
+    const raw = graph.progress.interpolate({
+      inputRange: step.input,
+      outputRange: output,
       extrapolate: 'clamp',
     });
-    shifts.set(openTime, Animated.subtract(raw, Animated.modulo(raw, 1)));
+    graph.shifts.set(openTime, Animated.subtract(raw, Animated.modulo(raw, 1)));
+  }
+}
+
+function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
+  const clock = SHARE_CLOCK ? new Animated.Value(0) : null;
+  const steps = plan.steps.map(step => {
+    const progress = clock ?? new Animated.Value(0);
+    const range = { inputRange: step.input, extrapolate: 'clamp' as const };
+    const scaleX = progress.interpolate({ ...range, outputRange: step.scaleX });
+    const translateX = progress.interpolate({ ...range, outputRange: step.translateX });
+    const scaleY = progress.interpolate({ ...range, outputRange: step.scaleY });
+    const translateY = progress.interpolate({ ...range, outputRange: step.translateY });
+    const layerOpacity = opacityOf(progress, step.layer);
+    const coveredOpacity = step.coveredStops ? opacityOf(progress, step.coveredStops) : null;
+    const shifts = new Map<number, Shift>();
+    const graph: StepGraph = {
+      progress,
+      scaleX,
+      translateX,
+      scaleY,
+      translateY,
+      layerOpacity,
+      coveredOpacity,
+      readoutOpacity: opacityOf(progress, step.readout),
+      shifts,
+      motion: {
+        scaleX,
+        translateX,
+        scaleY,
+        translateY,
+        layerOpacity,
+        shifts,
+        covered: step.split ? step.covered : undefined,
+        coveredOpacity: coveredOpacity ?? undefined,
+      },
+      forwardThreshold: step.forwardThreshold,
+      reverseThreshold: step.reverseThreshold,
+    };
+    if (step.mountAt <= 0) attachShifts(graph, step);
+    return graph;
+  });
+  const labelClock = clock ?? steps[steps.length - 1].progress;
+  const labelOpacity = opacityOf(labelClock, labelStops(plan));
+  for (const [index, graph] of steps.entries()) {
+    if (plan.steps[index].interval === plan.to) graph.motion.labelOpacity = labelOpacity;
   }
   return {
-    progress,
-    finer: axis('finer'),
-    coarser: axis('coarser'),
-    finerOpacity,
-    coveredOpacity,
-    labelOpacity: stepOpacity(progress, plan.pEnd, true),
-    shifts,
-    readoutOrigin: plan.zoomOut ? finerOpacity : coveredOpacity,
-    readoutTarget: plan.zoomOut ? coveredOpacity : finerOpacity,
+    plan,
+    origin,
+    steps,
+    clock,
+    labelOpacity,
+    reverse: false,
+    timers: [],
   };
 }
 
@@ -167,14 +210,14 @@ function runSpring(
   progress: Animated.Value,
   toValue: number,
   duration: number,
-  toZero: boolean,
+  threshold: number,
   onEnd: (finished: boolean) => void,
 ) {
   try {
     Animated.spring(progress, {
       toValue,
       velocity: 0,
-      ...travelSpring(duration, toZero),
+      ...travelSpring(duration, threshold),
       useNativeDriver: NATIVE_DRIVER,
     }).start(({ finished }) => onEnd(finished));
   } catch {
@@ -183,24 +226,46 @@ function runSpring(
   }
 }
 
-function motionFor(session: Session, interval: CandleInterval): PlotMotion {
-  const { plan, graph } = session;
-  const finerInterval = plan.zoomOut ? plan.from : plan.to;
-  const incoming = interval === plan.to;
-  if (interval === finerInterval) {
-    return {
-      ...graph.finer,
-      layerOpacity: graph.finerOpacity,
-      labelOpacity: incoming ? graph.labelOpacity : undefined,
-    };
+function motionFor(session: Session, index: number): PlotMotion {
+  return session.steps[index].motion;
+}
+
+function startClocks(session: Session, toValue: number, onEnd: (finished: boolean) => void) {
+  const { plan } = session;
+  if (session.clock) {
+    const threshold = toValue === 0 ? 0.0001 : 0.01;
+    runSpring(session.clock, toValue, plan.duration, threshold, onEnd);
+    return;
   }
-  return {
-    ...graph.coarser,
-    shifts: graph.shifts,
-    covered: plan.covered,
-    coveredOpacity: graph.coveredOpacity,
-    labelOpacity: incoming ? graph.labelOpacity : undefined,
-  };
+  const driver = toValue === 0 ? 0 : plan.steps.length - 1;
+  session.steps.forEach((graph, index) => {
+    const threshold = toValue === 0 ? graph.reverseThreshold : graph.forwardThreshold;
+    runSpring(graph.progress, toValue, plan.duration, threshold, finished => {
+      if (index === driver) onEnd(finished);
+    });
+  });
+}
+
+function stopClocks(session: Session | null, onTarget: (value: number) => void) {
+  if (!session) return;
+  if (session.clock) {
+    session.clock.stopAnimation(value => onTarget(typeof value === 'number' ? value : 0));
+    return;
+  }
+  const target = session.steps[session.steps.length - 1].progress;
+  for (const graph of session.steps) {
+    if (graph.progress === target) {
+      graph.progress.stopAnimation(value => onTarget(typeof value === 'number' ? value : 0));
+    } else {
+      graph.progress.stopAnimation();
+    }
+  }
+}
+
+function clearStaging(session: Session | null) {
+  if (!session) return;
+  for (const timer of session.timers) clearTimeout(timer);
+  session.timers = [];
 }
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
@@ -225,7 +290,22 @@ function snapshotCandles(candles: readonly Candle[]): Candle[] {
   return candles.map(candle => Object.assign(new Candle(), candle));
 }
 
+function storedLists(
+  controller: ReturnType<typeof useController>,
+  symbol: string,
+): Partial<Record<StepId, { candles: Candle[]; error?: boolean }>> {
+  const stored: Partial<Record<StepId, { candles: Candle[]; error?: boolean }>> = {};
+  for (const item of INTERVALS) {
+    const { exists, meta, candles } = readList(controller, symbol, item.value);
+    if (!exists || !candles) continue;
+    stored[item.value] = { candles, error: meta?.error != null };
+  }
+  return stored;
+}
+
 function travelAttempt(
+  controller: ReturnType<typeof useController>,
+  symbol: string,
   from: CandleInterval,
   to: CandleInterval,
   origin: readonly Candle[],
@@ -244,12 +324,13 @@ function travelAttempt(
     now,
     reduceMotion: false,
     atRest: true,
-    originReady: origin[origin.length - 1].openTime >= periodStart(now, from),
+    originReady: origin.length > 0 && origin[origin.length - 1].openTime >= periodStart(now, from),
     targetReady,
     elapsedMs,
     width,
     height,
     ratio: PixelRatio.get(),
+    stored: storedLists(controller, symbol),
   });
 }
 
@@ -330,23 +411,25 @@ const CandlePlot = memo(function CandlePlot({
   insetTop,
   insetLeft,
   motion,
+  domain = null,
   showLabels = true,
 }: {
   symbol: string;
-  interval: CandleInterval;
-  candles: readonly Candle[];
+  interval: StepId;
+  candles: readonly TravelCandle[];
   width: number;
   height: number;
   insetTop: number;
   insetLeft: number;
   motion?: PlotMotion;
+  domain?: PriceDomain | null;
   showLabels?: boolean;
 }): JSX.Element {
   const instrument = useQuery(MarketSymbol, { symbol });
   const { theme } = useTheme();
   const ratio = PixelRatio.get();
   const metrics = candleMetrics(width, ratio);
-  const placed = candleLayout(candles, { width, height, ratio });
+  const placed = domain ? placeCandles(candles, { width, height, ratio }, domain) : candleLayout(candles, { width, height, ratio });
   const shift = plotDeviceShift(insetTop, insetLeft, ratio);
   const last = candles[candles.length - 1];
   const places = instrument?.pricePlaces ?? decimalsOf(last.close);
@@ -549,27 +632,16 @@ function CandleValues({
   );
 }
 
-function TravelReadout({
-  symbol,
-  origin,
-  target,
-  originOpacity,
-  targetOpacity,
-}: {
-  symbol: string;
-  origin: Candle;
-  target: Candle;
-  originOpacity: Axis;
-  targetOpacity: Axis;
-}): JSX.Element {
+function TravelReadout({ symbol, session }: { symbol: string; session: Session }): JSX.Element {
   const instrument = useQuery(MarketSymbol, { symbol });
   const { theme } = useTheme();
-  const places = instrument?.pricePlaces ?? decimalsOf(target.close);
+  const last = session.plan.steps[session.plan.steps.length - 1].candles.at(-1);
+  const places = instrument?.pricePlaces ?? decimalsOf(last?.close ?? 0);
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
-  const tone = (candle: Candle) =>
+  const tone = (candle: TravelCandle) =>
     candle.close > candle.open ? up : candle.close < candle.open ? down : undefined;
-  const price = (candle: Candle, label: (typeof LABELS)[number]) =>
+  const price = (candle: TravelCandle, label: (typeof LABELS)[number]) =>
     label === 'Open' ? candle.open
     : label === 'High' ? candle.high
     : label === 'Low' ? candle.low
@@ -585,34 +657,37 @@ function TravelReadout({
               {label}
             </Text>
             <View>
-              <Animated.View
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                style={{ opacity: originOpacity }}
-              >
-                <Text
-                  role="caption"
-                  numberOfLines={1}
-                  style={[TABULAR, colored && tone(origin) ? { color: tone(origin) } : null]}
-                  testID={testID}
-                >
-                  {formatPrice(price(origin, label), places)}
-                </Text>
-              </Animated.View>
-              <Animated.View
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                style={{ position: 'absolute', left: 0, right: 0, top: 0, opacity: targetOpacity }}
-              >
-                <Text
-                  role="caption"
-                  numberOfLines={1}
-                  style={[TABULAR, colored && tone(target) ? { color: tone(target) } : null]}
-                  testID={testID}
-                >
-                  {formatPrice(price(target, label), places)}
-                </Text>
-              </Animated.View>
+              {session.plan.steps.map((step, index) => {
+                const candle = step.candles[step.candles.length - 1];
+                if (!candle) return null;
+                return (
+                  <Animated.View
+                    key={step.interval}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                    style={
+                      index === 0 ?
+                        { opacity: session.steps[index].readoutOpacity }
+                      : {
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          opacity: session.steps[index].readoutOpacity,
+                        }
+                    }
+                  >
+                    <Text
+                      role="caption"
+                      numberOfLines={1}
+                      style={[TABULAR, colored && tone(candle) ? { color: tone(candle) } : null]}
+                      testID={testID}
+                    >
+                      {formatPrice(price(candle, label), places)}
+                    </Text>
+                  </Animated.View>
+                );
+              })}
             </View>
           </View>
         );
@@ -746,6 +821,7 @@ function ChartFrame({
       ),
   ).current;
 
+  const [shown, setShown] = useState<readonly number[]>([]);
   const [phase, setPhase] = useState<Phase>(() => {
     if (bootKind === 'fresh') return { kind: 'live', interval: requested };
     if (!readyAtStart) return { kind: 'empty' };
@@ -774,7 +850,6 @@ function ChartFrame({
   const revealedRef = useRef<Animated.Value | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const travelToken = useRef(0);
-  const travelStarted = useRef(false);
   const widthRef = useRef(width);
   widthRef.current = width;
   const heightRef = useRef(height);
@@ -941,7 +1016,9 @@ function ChartFrame({
   );
 
   const finishTravel = useCallback((interval: CandleInterval) => {
+    clearStaging(sessionRef.current);
     sessionRef.current = null;
+    setShown([]);
     setPinned(null);
     frozenRef.current = null;
     onHoldRef.current(null);
@@ -949,15 +1026,19 @@ function ChartFrame({
     setPhase({ kind: 'live', interval });
   }, []);
 
-  const onTravelLayout = useCallback(() => {
-    const session = sessionRef.current;
-    if (!session || travelStarted.current || phaseRef.current.kind !== 'travel') return;
-    travelStarted.current = true;
-    runSpring(session.graph.progress, 1, session.plan.duration, false, finished => {
-      if (!finished || session.reverse || phaseRef.current.kind !== 'travel') return;
-      finishTravel(session.plan.to);
+  const stageSession = useCallback((session: Session) => {
+    const initial = session.plan.steps.flatMap((step, index) => (step.mountAt <= 0 ? [index] : []));
+    setShown(initial);
+    session.plan.steps.forEach((step, index) => {
+      if (step.mountAt <= 0) return;
+      const timer = setTimeout(() => {
+        if (sessionRef.current !== session) return;
+        attachShifts(session.steps[index], step);
+        setShown(current => (current.includes(index) ? current : [...current, index]));
+      }, step.mountAt);
+      session.timers.push(timer);
     });
-  }, [finishTravel]);
+  }, []);
 
   const onWarm = useCallback(
     (interval: CandleInterval) => {
@@ -997,10 +1078,12 @@ function ChartFrame({
         const session = current.session;
         if (next === session.plan.from) {
           session.reverse = true;
+          clearStaging(session);
           onHoldRef.current(null);
-          session.graph.progress.stopAnimation(value => {
-            session.graph.progress.setValue(typeof value === 'number' ? value : 0);
-            runSpring(session.graph.progress, 0, session.plan.duration, true, finished => {
+          stopClocks(session, value => {
+            if (session.clock) session.clock.setValue(value);
+            else for (const graph of session.steps) graph.progress.setValue(value);
+            startClocks(session, 0, finished => {
               if (!finished || !session.reverse || phaseRef.current.kind !== 'travel') return;
               finishTravel(session.plan.from);
             });
@@ -1008,7 +1091,8 @@ function ChartFrame({
           return;
         }
         session.reverse = false;
-        session.graph.progress.stopAnimation();
+        clearStaging(session);
+        stopClocks(session, () => {});
         setPhase({ kind: 'travel-out', session });
         shell.setValue(1);
         try {
@@ -1099,6 +1183,8 @@ function ChartFrame({
           const origin = snapshotCandles(liveOrigin);
           const now = Date.now();
           const probe = travelAttempt(
+            controllerRef.current,
+            symbol,
             mounted,
             next,
             origin,
@@ -1122,6 +1208,8 @@ function ChartFrame({
               const fresh = snapshotCandles(latest);
               const decidedAt = Date.now();
               const decided = travelAttempt(
+                controllerRef.current,
+                symbol,
                 from,
                 next,
                 origin,
@@ -1142,15 +1230,17 @@ function ChartFrame({
                 }
                 return;
               }
-              travelStarted.current = false;
-              const session: Session = {
-                plan: decided.plan,
-                graph: buildGraph(decided.plan),
-                reverse: false,
-              };
+              const session = buildSession(decided.plan, origin);
               sessionRef.current = session;
               shell.setValue(1);
-              setPhase({ kind: 'travel', session });
+              stageSession(session);
+              const traveling: Phase = { kind: 'travel', session };
+              phaseRef.current = traveling;
+              setPhase(traveling);
+              startClocks(session, 1, finished => {
+                if (!finished || session.reverse || phaseRef.current.kind !== 'travel') return;
+                finishTravel(session.plan.to);
+              });
             }, 0);
             return;
           }
@@ -1173,7 +1263,7 @@ function ChartFrame({
         scheduleReveal(next);
       }
     },
-    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, symbol],
+    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, stageSession, symbol],
   );
 
   const onLayout = useCallback(() => {
@@ -1211,7 +1301,8 @@ function ChartFrame({
       clearTimers(true);
       clearTimeout(wait.current.settle);
       travelToken.current += 1;
-      sessionRef.current?.graph.progress.stopAnimation();
+      stopClocks(sessionRef.current, () => {});
+      clearStaging(sessionRef.current);
       onHoldRef.current(null);
     },
     [clearTimers],
@@ -1219,7 +1310,7 @@ function ChartFrame({
 
   useEffect(() => {
     if (phase.kind !== 'live') return;
-    for (const interval of neighbourIntervals(phase.interval)) {
+    for (const interval of rowFetchOrder(phase.interval)) {
       if (canShow(interval)) continue;
       void Promise.resolve(controllerRef.current.fetch(getCandles, { symbol, interval })).then(
         () => {
@@ -1243,8 +1334,10 @@ function ChartFrame({
     if (current.kind !== 'travel') return;
     const session = current.session;
     const interval = requestedRef.current;
-    session.graph.progress.stopAnimation();
-    session.graph.progress.setValue(interval === session.plan.from ? 0 : 1);
+    stopClocks(session, () => {});
+    const value = interval === session.plan.from ? 0 : 1;
+    if (session.clock) session.clock.setValue(value);
+    else for (const graph of session.steps) graph.progress.setValue(value);
     finishTravel(interval);
   }, [finishTravel, height, width]);
 
@@ -1265,7 +1358,7 @@ function ChartFrame({
           symbol={symbol}
           interval={subscribed}
           frozen={
-            session ? (session.plan.origin as readonly Candle[])
+            session ? session.origin
             : phase.kind === 'out' ? frozenRef.current
             : pinned
           }
@@ -1280,31 +1373,31 @@ function ChartFrame({
             needsOffscreenAlphaCompositing
             style={{ position: 'absolute', left: 0, top: 0, width, height, opacity: shell }}
           >
-            {([session.plan.from, session.plan.to] as const).map(interval => (
-              <Animated.View
-                key={interval}
-                testID={`candle-series-${interval}`}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                needsOffscreenAlphaCompositing
-                onLayout={interval === session.plan.to ? onTravelLayout : undefined}
-                style={{ position: 'absolute', left: 0, top: 0, width, height, overflow: 'hidden' }}
-              >
-                <CandlePlot
-                  symbol={symbol}
-                  interval={interval}
-                  candles={
-                    (interval === session.plan.from ? session.plan.origin : session.plan.target) as readonly Candle[]
-                  }
-                  width={width}
-                  height={height}
-                  insetTop={insetTop}
-                  insetLeft={insetLeft}
-                  motion={motionFor(session, interval)}
-                  showLabels={interval === session.plan.to}
-                />
-              </Animated.View>
-            ))}
+            {session.plan.steps.map((step, index) =>
+              shown.includes(index) ?
+                <Animated.View
+                  key={step.interval}
+                  testID={`candle-series-${step.interval}`}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                  needsOffscreenAlphaCompositing
+                  style={{ position: 'absolute', left: 0, top: 0, width, height, overflow: 'hidden' }}
+                >
+                  <CandlePlot
+                    symbol={symbol}
+                    interval={step.interval}
+                    candles={step.candles}
+                    width={width}
+                    height={height}
+                    insetTop={insetTop}
+                    insetLeft={insetLeft}
+                    motion={motionFor(session, index)}
+                    domain={step.domain}
+                    showLabels={step.interval === session.plan.to}
+                  />
+                </Animated.View>
+              : null,
+            )}
           </Animated.View>
         : null}
         {showValues && published && !session ?
@@ -1344,14 +1437,8 @@ function ChartFrame({
         : null}
       </View>
       <View testID="candle-readout" style={styles.readout}>
-        {session && session.plan.origin.length > 0 && session.plan.target.length > 0 ?
-          <TravelReadout
-            symbol={symbol}
-            origin={session.plan.origin[session.plan.origin.length - 1] as Candle}
-            target={session.plan.target[session.plan.target.length - 1] as Candle}
-            originOpacity={session.graph.readoutOrigin}
-            targetOpacity={session.graph.readoutTarget}
-          />
+        {session ?
+          <TravelReadout symbol={symbol} session={session} />
         : showValues && published ?
           <CandleValues symbol={symbol} candle={published.candles[published.candles.length - 1]} opacity={published.opacity} />
         : LABELS.map(label => (
@@ -1403,6 +1490,22 @@ function Gate({
   return null;
 }
 
+/** Keeps every pill's list while the chart is mounted. `useCache` holds a GC reference and does not fetch. */
+function RowHolder({ symbol, interval }: { symbol: string; interval: CandleInterval }): null {
+  useCache(getCandles, { symbol, interval });
+  return null;
+}
+
+function RowHolders({ symbol }: { symbol: string }): JSX.Element {
+  return (
+    <>
+      {INTERVALS.map(item => (
+        <RowHolder key={item.value} symbol={symbol} interval={item.value} />
+      ))}
+    </>
+  );
+}
+
 export default function ChartBody({
   symbol,
   interval,
@@ -1437,6 +1540,7 @@ export default function ChartBody({
 
   return (
     <View style={styles.body}>
+      <RowHolders symbol={symbol} />
       {showGate ?
         <>
           <IntervalChips value={interval} onSelect={onInterval} />
