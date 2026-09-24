@@ -2,7 +2,6 @@ import { AsyncBoundary, useController, useLive, useQuery } from '@data-client/re
 import { Text, useTheme } from '@reactive/silk-native';
 import {
   forwardRef,
-  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -35,8 +34,17 @@ import {
   FADE_OUT_MS,
   FAILURE_MS,
   intervalLabel,
+  periodStart,
   revealAt,
 } from '@/components/chartMotion';
+import {
+  cameraTable,
+  neighbourIntervals,
+  planTravel,
+  shiftTable,
+  travelSpring,
+  type TravelPlan,
+} from '@/components/chartTravel';
 import { LoadError } from '@/components/LoadError';
 import { Pill } from '@/components/Pill';
 import {
@@ -50,17 +58,20 @@ import {
   READOUT,
 } from '@/components/candleLayout';
 import { decimalsOf, formatPrice } from '@/components/formatMarket';
-import { getCandles, INTERVALS, type Candle, type CandleInterval } from '@/resources/Candle';
+import { Candle, getCandles, INTERVALS, type CandleInterval } from '@/resources/Candle';
 import { MarketSymbol } from '@/resources/Symbol';
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
-const NATIVE_DRIVER = Platform.OS !== 'web';
+// Jest's native animated mock ends the spring in 16ms without moving `p`.
+// The device still uses the native driver; web and tests run the same JS graph.
+const NATIVE_DRIVER = Platform.OS !== 'web' && process.env.JEST_WORKER_ID == null;
 const LABELS = ['Open', 'High', 'Low', 'Close'] as const;
 
 type Phase =
   | { kind: 'live' | 'in' | 'out'; interval: CandleInterval }
   | { kind: 'empty' }
-  | { kind: 'fail' };
+  | { kind: 'fail' }
+  | { kind: 'travel' | 'travel-out'; session: Session };
 
 type Published = {
   interval: CandleInterval;
@@ -74,6 +85,123 @@ type SeriesHandle = {
   /** The value created for this mount. A remount gets a new one. */
   value: Animated.Value;
 };
+
+type Axis = Animated.AnimatedInterpolation<number>;
+type Shift = ReturnType<typeof Animated.subtract>;
+
+type PlotMotion = {
+  scaleX: Axis;
+  translateX: Axis;
+  scaleY: Axis;
+  translateY: Axis;
+  layerOpacity?: Axis;
+  shifts?: ReadonlyMap<number, Shift>;
+  covered?: ReadonlySet<number>;
+  coveredOpacity?: Axis;
+  labelOpacity?: Axis;
+};
+
+type TravelGraph = {
+  progress: Animated.Value;
+  finer: { scaleX: Axis; translateX: Axis; scaleY: Axis; translateY: Axis };
+  coarser: { scaleX: Axis; translateX: Axis; scaleY: Axis; translateY: Axis };
+  finerOpacity: Axis;
+  coveredOpacity: Axis;
+  labelOpacity: Axis;
+  shifts: ReadonlyMap<number, Shift>;
+  readoutOrigin: Axis;
+  readoutTarget: Axis;
+};
+
+type Session = {
+  plan: TravelPlan;
+  graph: TravelGraph;
+  reverse: boolean;
+};
+
+function stepOpacity(progress: Animated.Value, at: number, showAfter: boolean): Axis {
+  return progress.interpolate({
+    inputRange: [0, at, at, 1],
+    outputRange: showAfter ? [0, 0, 1, 1] : [1, 1, 0, 0],
+    extrapolate: 'clamp',
+  });
+}
+
+function buildGraph(plan: TravelPlan): TravelGraph {
+  const progress = new Animated.Value(0);
+  const axis = (role: 'finer' | 'coarser') => {
+    const table = cameraTable(plan, role);
+    const range = { inputRange: table.input, extrapolate: 'clamp' as const };
+    return {
+      scaleX: progress.interpolate({ ...range, outputRange: table.scaleX }),
+      translateX: progress.interpolate({ ...range, outputRange: table.translateX }),
+      scaleY: progress.interpolate({ ...range, outputRange: table.scaleY }),
+      translateY: progress.interpolate({ ...range, outputRange: table.translateY }),
+    };
+  };
+  const finerOpacity = stepOpacity(progress, plan.pH, !plan.zoomOut);
+  const coveredOpacity = stepOpacity(progress, plan.pH, plan.zoomOut);
+  const shifts = new Map<number, Shift>();
+  for (const [openTime, centre] of plan.centres) {
+    const raw = progress.interpolate({
+      inputRange: plan.knots.map(knot => knot.p),
+      outputRange: shiftTable(plan, centre),
+      extrapolate: 'clamp',
+    });
+    shifts.set(openTime, Animated.subtract(raw, Animated.modulo(raw, 1)));
+  }
+  return {
+    progress,
+    finer: axis('finer'),
+    coarser: axis('coarser'),
+    finerOpacity,
+    coveredOpacity,
+    labelOpacity: stepOpacity(progress, plan.pEnd, true),
+    shifts,
+    readoutOrigin: plan.zoomOut ? finerOpacity : coveredOpacity,
+    readoutTarget: plan.zoomOut ? coveredOpacity : finerOpacity,
+  };
+}
+
+function runSpring(
+  progress: Animated.Value,
+  toValue: number,
+  duration: number,
+  toZero: boolean,
+  onEnd: (finished: boolean) => void,
+) {
+  try {
+    Animated.spring(progress, {
+      toValue,
+      velocity: 0,
+      ...travelSpring(duration, toZero),
+      useNativeDriver: NATIVE_DRIVER,
+    }).start(({ finished }) => onEnd(finished));
+  } catch {
+    progress.setValue(toValue);
+    onEnd(true);
+  }
+}
+
+function motionFor(session: Session, interval: CandleInterval): PlotMotion {
+  const { plan, graph } = session;
+  const finerInterval = plan.zoomOut ? plan.from : plan.to;
+  const incoming = interval === plan.to;
+  if (interval === finerInterval) {
+    return {
+      ...graph.finer,
+      layerOpacity: graph.finerOpacity,
+      labelOpacity: incoming ? graph.labelOpacity : undefined,
+    };
+  }
+  return {
+    ...graph.coarser,
+    shifts: graph.shifts,
+    covered: plan.covered,
+    coveredOpacity: graph.coveredOpacity,
+    labelOpacity: incoming ? graph.labelOpacity : undefined,
+  };
+}
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
 
@@ -91,6 +219,38 @@ function useReduceMotion(): boolean {
     };
   }, []);
   return enabled;
+}
+
+function snapshotCandles(candles: readonly Candle[]): Candle[] {
+  return candles.map(candle => Object.assign(new Candle(), candle));
+}
+
+function travelAttempt(
+  from: CandleInterval,
+  to: CandleInterval,
+  origin: readonly Candle[],
+  target: readonly Candle[],
+  elapsedMs: number,
+  width: number,
+  height: number,
+  targetReady: boolean,
+  now = Date.now(),
+) {
+  return planTravel({
+    from,
+    to,
+    origin,
+    target,
+    now,
+    reduceMotion: false,
+    atRest: true,
+    originReady: origin[origin.length - 1].openTime >= periodStart(now, from),
+    targetReady,
+    elapsedMs,
+    width,
+    height,
+    ratio: PixelRatio.get(),
+  });
 }
 
 function readList(
@@ -136,9 +296,11 @@ function DeviceMark({
 function IntervalChips({
   value,
   onSelect,
+  onWarm,
 }: {
   value: CandleInterval;
   onSelect: (interval: CandleInterval) => void;
+  onWarm?: (interval: CandleInterval) => void;
 }): JSX.Element {
   return (
     <View style={styles.chips}>
@@ -151,6 +313,7 @@ function IntervalChips({
             label={item.label}
             selected={selected}
             onPress={() => onSelect(item.value)}
+            onPressIn={onWarm ? () => onWarm(item.value) : undefined}
           />
         );
       })}
@@ -166,6 +329,8 @@ const CandlePlot = memo(function CandlePlot({
   height,
   insetTop,
   insetLeft,
+  motion,
+  showLabels = true,
 }: {
   symbol: string;
   interval: CandleInterval;
@@ -174,6 +339,8 @@ const CandlePlot = memo(function CandlePlot({
   height: number;
   insetTop: number;
   insetLeft: number;
+  motion?: PlotMotion;
+  showLabels?: boolean;
 }): JSX.Element {
   const instrument = useQuery(MarketSymbol, { symbol });
   const { theme } = useTheme();
@@ -195,79 +362,120 @@ const CandlePlot = memo(function CandlePlot({
     if (candle.high > seriesHigh) seriesHigh = candle.high;
     if (candle.low < seriesLow) seriesLow = candle.low;
   }
+  const labelStyle = motion?.labelOpacity ? { opacity: motion.labelOpacity } : undefined;
 
   return (
     <>
-      <View
+      <Animated.View
         pointerEvents="none"
         style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: width * ratio,
-          height: height * ratio,
-          transformOrigin: 'left top',
-          transform: [{ scale: 1 / ratio }, { translateX: -shift.x }, { translateY: -shift.y }],
+          width,
+          height,
+          opacity: motion?.layerOpacity,
+          transform: motion
+            ? [
+                { translateX: motion.translateX },
+                { translateY: motion.translateY },
+                { scaleX: motion.scaleX },
+                { scaleY: motion.scaleY },
+              ]
+            : undefined,
         }}
       >
-        {placed.map((item, index) => {
-          const candle = candles[index];
-          const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
-          const newest = index === placed.length - 1;
-          const x = Math.round(item.x * ratio);
-          const bodyTop = Math.round(item.bodyTop * ratio);
-          const bodyH = Math.round(item.bodyHeight * ratio);
-          const hollow =
-            item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
-          return (
-            <Fragment key={candle.openTime}>
-              <DeviceMark
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: width * ratio,
+            height: height * ratio,
+            transformOrigin: 'left top',
+            transform: [{ scale: 1 / ratio }, { translateX: -shift.x }, { translateY: -shift.y }],
+          }}
+        >
+          {placed.map((item, index) => {
+            const candle = candles[index];
+            const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
+            const newest = index === placed.length - 1;
+            const bodyLeft = Math.round(item.x * ratio);
+            const slotLeft = bodyLeft - metrics.gap;
+            const bodyTop = Math.round(item.bodyTop * ratio);
+            const bodyH = Math.round(item.bodyHeight * ratio);
+            const hollow =
+              item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
+            const tx = motion?.shifts?.get(candle.openTime);
+            const covered = motion?.covered?.has(candle.openTime) === true;
+            return (
+              <Animated.View
+                key={candle.openTime}
+                pointerEvents="none"
                 style={{
                   position: 'absolute',
-                  left: x + wickOffset,
-                  top: Math.round(item.wickTop * ratio),
-                  width: metrics.wick,
-                  height: Math.round(item.wickHeight * ratio),
-                  backgroundColor: color,
+                  left: slotLeft,
+                  top: 0,
+                  width: metrics.slot,
+                  height: height * ratio,
+                  opacity: covered ? motion?.coveredOpacity : 1,
+                  transform: tx ? [{ translateX: tx }] : undefined,
                 }}
-              />
-              <DeviceMark
-                testID={newest ? 'candle-last' : undefined}
-                style={{
-                  position: 'absolute',
-                  left: x,
-                  top: bodyTop,
-                  width: metrics.body,
-                  height: bodyH,
-                  backgroundColor: color,
-                }}
-              />
-              {hollow ?
+              >
                 <DeviceMark
                   style={{
                     position: 'absolute',
-                    left: x + metrics.wick,
-                    top: bodyTop + metrics.wick,
-                    width: metrics.body - metrics.wick * 2,
-                    height: bodyH - metrics.wick * 2,
-                    backgroundColor: surface,
+                    left: metrics.gap + wickOffset,
+                    top: Math.round(item.wickTop * ratio),
+                    width: metrics.wick,
+                    height: Math.round(item.wickHeight * ratio),
+                    backgroundColor: color,
                   }}
                 />
-              : null}
-            </Fragment>
-          );
-        })}
-      </View>
-      <View pointerEvents="none" style={[styles.band, styles.bandTop]}>
-        <Text role="caption" tone="secondary" style={TABULAR} testID="series-high">
-          {formatPrice(seriesHigh, places)}
-        </Text>
-      </View>
-      <View pointerEvents="none" style={[styles.band, styles.bandBottom]}>
-        <Text role="caption" tone="secondary" style={TABULAR} testID="series-low">
-          {formatPrice(seriesLow, places)}
-        </Text>
-      </View>
+                <DeviceMark
+                  testID={newest ? 'candle-last' : undefined}
+                  style={{
+                    position: 'absolute',
+                    left: metrics.gap,
+                    top: bodyTop,
+                    width: metrics.body,
+                    height: bodyH,
+                    backgroundColor: color,
+                  }}
+                />
+                {hollow ?
+                  <DeviceMark
+                    style={{
+                      position: 'absolute',
+                      left: metrics.gap + metrics.wick,
+                      top: bodyTop + metrics.wick,
+                      width: metrics.body - metrics.wick * 2,
+                      height: bodyH - metrics.wick * 2,
+                      backgroundColor: surface,
+                    }}
+                  />
+                : null}
+              </Animated.View>
+            );
+          })}
+        </View>
+      </Animated.View>
+      {showLabels ?
+        <>
+          <View pointerEvents="none" style={[styles.band, styles.bandTop]}>
+            <Animated.View style={labelStyle}>
+              <Text role="caption" tone="secondary" style={TABULAR} testID="series-high">
+                {formatPrice(seriesHigh, places)}
+              </Text>
+            </Animated.View>
+          </View>
+          <View pointerEvents="none" style={[styles.band, styles.bandBottom]}>
+            <Animated.View style={labelStyle}>
+              <Text role="caption" tone="secondary" style={TABULAR} testID="series-low">
+                {formatPrice(seriesLow, places)}
+              </Text>
+            </Animated.View>
+          </View>
+        </>
+      : null}
     </>
   );
 });
@@ -337,6 +545,78 @@ function CandleValues({
           opacity={opacity}
         />
       ))}
+    </>
+  );
+}
+
+function TravelReadout({
+  symbol,
+  origin,
+  target,
+  originOpacity,
+  targetOpacity,
+}: {
+  symbol: string;
+  origin: Candle;
+  target: Candle;
+  originOpacity: Axis;
+  targetOpacity: Axis;
+}): JSX.Element {
+  const instrument = useQuery(MarketSymbol, { symbol });
+  const { theme } = useTheme();
+  const places = instrument?.pricePlaces ?? decimalsOf(target.close);
+  const up = theme.semantic.color.tones.success.solid;
+  const down = theme.semantic.color.tones.danger.solid;
+  const tone = (candle: Candle) =>
+    candle.close > candle.open ? up : candle.close < candle.open ? down : undefined;
+  const price = (candle: Candle, label: (typeof LABELS)[number]) =>
+    label === 'Open' ? candle.open
+    : label === 'High' ? candle.high
+    : label === 'Low' ? candle.low
+    : candle.close;
+  return (
+    <>
+      {LABELS.map(label => {
+        const testID = `candle-${label.toLowerCase()}`;
+        const colored = label === 'Close';
+        return (
+          <View key={label} style={styles.readoutItem}>
+            <Text role="caption" tone="secondary" numberOfLines={1}>
+              {label}
+            </Text>
+            <View>
+              <Animated.View
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={{ opacity: originOpacity }}
+              >
+                <Text
+                  role="caption"
+                  numberOfLines={1}
+                  style={[TABULAR, colored && tone(origin) ? { color: tone(origin) } : null]}
+                  testID={testID}
+                >
+                  {formatPrice(price(origin, label), places)}
+                </Text>
+              </Animated.View>
+              <Animated.View
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={{ position: 'absolute', left: 0, right: 0, top: 0, opacity: targetOpacity }}
+              >
+                <Text
+                  role="caption"
+                  numberOfLines={1}
+                  style={[TABULAR, colored && tone(target) ? { color: tone(target) } : null]}
+                  testID={testID}
+                >
+                  {formatPrice(price(target, label), places)}
+                </Text>
+              </Animated.View>
+            </View>
+          </View>
+        );
+      })}
     </>
   );
 }
@@ -473,6 +753,8 @@ function ChartFrame({
   });
   const [published, setPublished] = useState<Published | null>(null);
   const [caption, setCaption] = useState(false);
+  const [pinned, setPinned] = useState<readonly Candle[] | null>(null);
+  const shell = useRef(new Animated.Value(1)).current;
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -490,6 +772,13 @@ function ChartFrame({
   const acceptedRef = useRef<CandleInterval | null>(null);
   const failedRef = useRef<CandleInterval | null>(null);
   const revealedRef = useRef<Animated.Value | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+  const travelToken = useRef(0);
+  const travelStarted = useRef(false);
+  const widthRef = useRef(width);
+  widthRef.current = width;
+  const heightRef = useRef(height);
+  heightRef.current = height;
   const wait = useRef({
     startedAt: null as number | null,
     generation: 0,
@@ -498,6 +787,7 @@ function ChartFrame({
     ceiling: undefined as ReturnType<typeof setTimeout> | undefined,
     fade: undefined as ReturnType<typeof setTimeout> | undefined,
     settle: undefined as ReturnType<typeof setTimeout> | undefined,
+    travel: undefined as ReturnType<typeof setTimeout> | undefined,
   });
 
   const publish = useCallback((next: Published | null, owner?: Animated.Value) => {
@@ -526,6 +816,7 @@ function ChartFrame({
     clearTimeout(timers.reveal);
     clearTimeout(timers.ceiling);
     clearTimeout(timers.fade);
+    clearTimeout(timers.travel);
   }, []);
 
   const canShow = useCallback(
@@ -542,6 +833,8 @@ function ChartFrame({
     if (requestedRef.current !== interval || !canShow(interval)) return false;
     failedRef.current = null;
     frozenRef.current = null;
+    sessionRef.current = null;
+    setPinned(null);
     wait.current.startedAt = null;
     clearTimeout(wait.current.caption);
     clearTimeout(wait.current.reveal);
@@ -559,7 +852,8 @@ function ChartFrame({
     (interval: CandleInterval) => {
       // A fetch the user already left must not clear the reveal that replaced it.
       if (requestedRef.current !== interval) return false;
-      if (phaseRef.current.kind === 'out') return;
+      const kind = phaseRef.current.kind;
+      if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
       const at = revealAt(wait.current.startedAt, Date.now(), Date.now());
       const delay = at - Date.now();
       clearTimeout(wait.current.reveal);
@@ -572,7 +866,8 @@ function ChartFrame({
 
   const showFailure = useCallback((interval: CandleInterval) => {
     failedRef.current = interval;
-    if (phaseRef.current.kind === 'out') return;
+    const kind = phaseRef.current.kind;
+    if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
     if (requestedRef.current !== interval) return;
     wait.current.startedAt = null;
     clearTimeout(wait.current.caption);
@@ -645,16 +940,120 @@ function ChartFrame({
     [onFadeDone],
   );
 
+  const finishTravel = useCallback((interval: CandleInterval) => {
+    sessionRef.current = null;
+    setPinned(null);
+    frozenRef.current = null;
+    onHoldRef.current(null);
+    setCaption(false);
+    setPhase({ kind: 'live', interval });
+  }, []);
+
+  const onTravelLayout = useCallback(() => {
+    const session = sessionRef.current;
+    if (!session || travelStarted.current || phaseRef.current.kind !== 'travel') return;
+    travelStarted.current = true;
+    runSpring(session.graph.progress, 1, session.plan.duration, false, finished => {
+      if (!finished || session.reverse || phaseRef.current.kind !== 'travel') return;
+      finishTravel(session.plan.to);
+    });
+  }, [finishTravel]);
+
+  const onWarm = useCallback(
+    (interval: CandleInterval) => {
+      if (interval === requestedRef.current && phaseRef.current.kind !== 'fail') return;
+      if (canShow(interval)) return;
+      void Promise.resolve(controllerRef.current.fetch(getCandles, { symbol, interval })).then(
+        () => {
+          acceptedRef.current = interval;
+          if (requestedRef.current !== interval) return;
+          const kind = phaseRef.current.kind;
+          if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
+          clearTimeout(wait.current.ceiling);
+          if (failedRef.current === interval) failedRef.current = null;
+          scheduleReveal(interval);
+        },
+        () => {},
+      );
+    },
+    [canShow, scheduleReveal, symbol],
+  );
+
   const onSelect = useCallback(
     (next: CandleInterval) => {
       const current = phaseRef.current;
       if (next === requestedRef.current && current.kind !== 'fail') return;
+      travelToken.current += 1;
+      clearTimeout(wait.current.travel);
+      setPinned(null);
       const mounted = mountedInterval(current);
       const tapBack = mounted != null && next === mounted && current.kind === 'out';
 
       if (acceptedRef.current !== next) acceptedRef.current = null;
       requestedRef.current = next;
       onInterval(next);
+
+      if (current.kind === 'travel') {
+        const session = current.session;
+        if (next === session.plan.from) {
+          session.reverse = true;
+          onHoldRef.current(null);
+          session.graph.progress.stopAnimation(value => {
+            session.graph.progress.setValue(typeof value === 'number' ? value : 0);
+            runSpring(session.graph.progress, 0, session.plan.duration, true, finished => {
+              if (!finished || !session.reverse || phaseRef.current.kind !== 'travel') return;
+              finishTravel(session.plan.from);
+            });
+          });
+          return;
+        }
+        session.reverse = false;
+        session.graph.progress.stopAnimation();
+        setPhase({ kind: 'travel-out', session });
+        shell.setValue(1);
+        try {
+          Animated.timing(shell, {
+            toValue: 0,
+            duration: FADE_OUT_MS,
+            easing: easeOut,
+            useNativeDriver: NATIVE_DRIVER,
+          }).start();
+        } catch {
+          shell.setValue(0);
+        }
+        clearTimeout(wait.current.fade);
+        wait.current.fade = setTimeout(() => {
+          if (phaseRef.current.kind !== 'travel-out') return;
+          sessionRef.current = null;
+          setPinned(null);
+          phaseRef.current = { kind: 'empty' };
+          onFadeDone();
+        }, FADE_OUT_MS);
+        if (!canShow(next)) {
+          ensureWait();
+          beginFetch(next);
+        }
+        return;
+      }
+
+      if (current.kind === 'travel-out') {
+        if (next === current.session.plan.from) {
+          clearTimers(true);
+          sessionRef.current = null;
+          shell.setValue(1);
+          failedRef.current = null;
+          frozenRef.current = null;
+          setCaption(false);
+          onHoldRef.current(null);
+          setPhase({ kind: 'live', interval: next });
+          return;
+        }
+        if (!canShow(next)) {
+          ensureWait();
+          beginFetch(next);
+        }
+        return;
+      }
 
       if (tapBack) {
         clearTimers(true);
@@ -693,6 +1092,71 @@ function ChartFrame({
         return;
       }
 
+      if (current.kind === 'live' && ready && mounted) {
+        const liveOrigin = candlesRef.current;
+        const stored = readList(controllerRef.current, symbol, next).candles;
+        if (liveOrigin && stored && liveOrigin.length > 0 && stored.length > 0) {
+          const origin = snapshotCandles(liveOrigin);
+          const now = Date.now();
+          const probe = travelAttempt(
+            mounted,
+            next,
+            origin,
+            stored,
+            0,
+            widthRef.current,
+            heightRef.current,
+            true,
+            now,
+          );
+          if (probe.ok) {
+            failedRef.current = null;
+            setPinned(origin);
+            onHoldRef.current(mounted);
+            const touchAt = now;
+            const token = travelToken.current;
+            const from = mounted;
+            wait.current.travel = setTimeout(() => {
+              if (token !== travelToken.current || phaseRef.current.kind !== 'live') return;
+              const latest = readList(controllerRef.current, symbol, next).candles ?? stored;
+              const fresh = snapshotCandles(latest);
+              const decidedAt = Date.now();
+              const decided = travelAttempt(
+                from,
+                next,
+                origin,
+                fresh,
+                decidedAt - touchAt,
+                widthRef.current,
+                heightRef.current,
+                canShow(next),
+                decidedAt,
+              );
+              if (!decided.ok) {
+                candlesRef.current = origin;
+                setPinned(null);
+                fadeOut(from);
+                if (!canShow(next)) {
+                  ensureWait();
+                  beginFetch(next);
+                }
+                return;
+              }
+              travelStarted.current = false;
+              const session: Session = {
+                plan: decided.plan,
+                graph: buildGraph(decided.plan),
+                reverse: false,
+              };
+              sessionRef.current = session;
+              shell.setValue(1);
+              setPhase({ kind: 'travel', session });
+            }, 0);
+            return;
+          }
+        }
+      }
+
       failedRef.current = null;
       if (mounted != null && current.kind !== 'fail') {
         onHoldRef.current(mounted === next ? null : mounted);
@@ -709,7 +1173,7 @@ function ChartFrame({
         scheduleReveal(next);
       }
     },
-    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, onInterval, scheduleReveal],
+    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, symbol],
   );
 
   const onLayout = useCallback(() => {
@@ -746,32 +1210,103 @@ function ChartFrame({
     () => () => {
       clearTimers(true);
       clearTimeout(wait.current.settle);
+      travelToken.current += 1;
+      sessionRef.current?.graph.progress.stopAnimation();
       onHoldRef.current(null);
     },
     [clearTimers],
   );
 
+  useEffect(() => {
+    if (phase.kind !== 'live') return;
+    for (const interval of neighbourIntervals(phase.interval)) {
+      if (canShow(interval)) continue;
+      void Promise.resolve(controllerRef.current.fetch(getCandles, { symbol, interval })).then(
+        () => {
+          if (requestedRef.current !== interval) return;
+          const kind = phaseRef.current.kind;
+          if (kind === 'live' || kind === 'in' || kind === 'travel' || kind === 'travel-out') return;
+          if (failedRef.current === interval) failedRef.current = null;
+          scheduleReveal(interval);
+        },
+        () => {},
+      );
+    }
+  }, [canShow, phase, symbol]);
+
+  const sizeRef = useRef({ width, height });
+  useEffect(() => {
+    const prev = sizeRef.current;
+    sizeRef.current = { width, height };
+    if (prev.width === width && prev.height === height) return;
+    const current = phaseRef.current;
+    if (current.kind !== 'travel') return;
+    current.session.reverse = false;
+    current.session.graph.progress.stopAnimation();
+    current.session.graph.progress.setValue(1);
+    finishTravel(current.session.plan.to);
+  }, [finishTravel, height, width]);
+
   const mounted = mountedInterval(phase);
+  const session = phase.kind === 'travel' || phase.kind === 'travel-out' ? phase.session : null;
+  const subscribed = session ? session.plan.from : mounted;
   const hidden = phase.kind === 'out';
   const showValues = published != null && published.candles.length > 0 && published.interval === mounted;
   const showEmpty = published != null && published.candles.length === 0 && published.interval === mounted;
 
   return (
     <View style={styles.frame}>
-      <IntervalChips value={requested} onSelect={onSelect} />
-      {mounted ?
+      <IntervalChips value={requested} onSelect={onSelect} onWarm={onWarm} />
+      {subscribed ?
         <LiveSeries
-          key={mounted}
+          key={subscribed}
           ref={seriesRef}
           symbol={symbol}
-          interval={mounted}
-          frozen={phase.kind === 'out' ? frozenRef.current : null}
+          interval={subscribed}
+          frozen={
+            session ? (session.plan.origin as readonly Candle[])
+            : phase.kind === 'out' ? frozenRef.current
+            : pinned
+          }
           instant={phase.kind === 'live'}
           onPublish={publish}
         />
       : null}
       <View testID="candles" style={[styles.plot, { width, height }]}>
-        {showValues && published ?
+        {session ?
+          <Animated.View
+            pointerEvents="none"
+            needsOffscreenAlphaCompositing
+            style={{ position: 'absolute', left: 0, top: 0, width, height, opacity: shell }}
+          >
+            {([session.plan.from, session.plan.to] as const).map(interval => (
+              <Animated.View
+                key={interval}
+                testID={`candle-series-${interval}`}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                needsOffscreenAlphaCompositing
+                onLayout={interval === session.plan.to ? onTravelLayout : undefined}
+                style={{ position: 'absolute', left: 0, top: 0, width, height, overflow: 'hidden' }}
+              >
+                <CandlePlot
+                  symbol={symbol}
+                  interval={interval}
+                  candles={
+                    (interval === session.plan.from ? session.plan.origin : session.plan.target) as readonly Candle[]
+                  }
+                  width={width}
+                  height={height}
+                  insetTop={insetTop}
+                  insetLeft={insetLeft}
+                  motion={motionFor(session, interval)}
+                  showLabels={interval === session.plan.to}
+                />
+              </Animated.View>
+            ))}
+          </Animated.View>
+        : null}
+        {showValues && published && !session ?
           <Animated.View
             testID={`candle-series-${published.interval}`}
             accessible
@@ -808,7 +1343,15 @@ function ChartFrame({
         : null}
       </View>
       <View testID="candle-readout" style={styles.readout}>
-        {showValues && published ?
+        {session && session.plan.origin.length > 0 && session.plan.target.length > 0 ?
+          <TravelReadout
+            symbol={symbol}
+            origin={session.plan.origin[session.plan.origin.length - 1] as Candle}
+            target={session.plan.target[session.plan.target.length - 1] as Candle}
+            originOpacity={session.graph.readoutOrigin}
+            targetOpacity={session.graph.readoutTarget}
+          />
+        : showValues && published ?
           <CandleValues symbol={symbol} candle={published.candles[published.candles.length - 1]} opacity={published.opacity} />
         : LABELS.map(label => (
             <View key={label} style={styles.readoutItem}>

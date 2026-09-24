@@ -6,11 +6,12 @@ type PillProps = {
   label: string;
   selected: boolean;
   onPress: () => void;
+  onPressIn?: () => void;
   testID: string;
 };
 
 /** 32px pill in a 44px hit target. Quote, sort, and interval use it. */
-export function Pill({ label, selected, onPress, testID }: PillProps): JSX.Element {
+export function Pill({ label, selected, onPress, onPressIn, testID }: PillProps): JSX.Element {
   const { theme } = useTheme();
   return (
     <Pressable
@@ -18,6 +19,7 @@ export function Pill({ label, selected, onPress, testID }: PillProps): JSX.Eleme
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
+      onPressIn={onPressIn}
       style={styles.hit}
     >
       <View
