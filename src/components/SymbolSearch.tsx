@@ -1,6 +1,6 @@
 import { useQuery } from '@data-client/react';
 import { Input, Text, useTheme } from '@reactive/silk-native';
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type JSX } from 'react';
 import {
   BackHandler,
   FlatList,
@@ -10,6 +10,7 @@ import {
   type ListRenderItem,
 } from 'react-native';
 
+import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
 import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
 import { findSymbols, searchKey } from '@/resources/Markets';
 
@@ -35,13 +36,36 @@ function SymbolResults({
   const q = searchKey(query);
   const args = useMemo(() => ({ q }), [q]);
   const rows = useQuery(findSymbols, args);
+  const volumesReady =
+    !!rows &&
+    rows.length > 0 &&
+    rows.every(row => row.ticker != null || row.status !== 'TRADING');
   const liveIds = useMemo(() => (rows ?? []).map(row => row.symbol), [rows]);
-  // Order is fixed per query. A volume tick between keystrokes must not move the row under a finger.
-  const shown = useRef({ q, ids: liveIds });
-  if (shown.current.q !== q || shown.current.ids.length !== liveIds.length) {
-    shown.current = { q, ids: liveIds };
+  const liveRef = useRef(liveIds);
+  liveRef.current = liveIds;
+
+  const [hold, dispatch] = useReducer(holdOrder, idleHold);
+  const querySeen = useRef(q);
+  if (querySeen.current !== q) {
+    querySeen.current = q;
+    const event: HoldEvent = { type: 'args', ids: liveIds, ready: volumesReady };
+    dispatch(event);
   }
-  const ids = shown.current.ids;
+
+  useEffect(() => {
+    if (!volumesReady) return;
+    dispatch({ type: 'ready', ids: liveRef.current });
+  }, [volumesReady, liveIds]);
+
+  const holdFinger = useCallback(() => {
+    dispatch({ type: 'down', ids: liveRef.current });
+  }, []);
+  const releaseFinger = useCallback(() => {
+    dispatch({ type: 'up', ids: liveRef.current });
+  }, []);
+
+  // The first volume sort commits. Later ticks stay put, including under a finger.
+  const ids = hold.committed ?? liveIds;
   const renderItem = useCallback<ListRenderItem<string>>(
     ({ item }) => <MarketRow symbol={item} onPress={onChoose} />,
     [onChoose],
@@ -56,19 +80,30 @@ function SymbolResults({
     );
   }
   return (
-    <FlatList
-      key={q}
-      testID="symbol-search-results"
-      data={ids}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      getItemLayout={getItemLayout}
-      keyboardShouldPersistTaps="handled"
-      initialNumToRender={13}
-      maxToRenderPerBatch={13}
-      windowSize={7}
-      showsVerticalScrollIndicator={false}
-    />
+    <View
+      testID="symbol-search-list"
+      style={styles.list}
+      onTouchStart={holdFinger}
+      onTouchEnd={releaseFinger}
+      onTouchCancel={releaseFinger}
+      onPointerDown={holdFinger}
+      onPointerUp={releaseFinger}
+      onPointerCancel={releaseFinger}
+    >
+      <FlatList
+        key={q}
+        testID="symbol-search-results"
+        data={ids}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        getItemLayout={getItemLayout}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={13}
+        maxToRenderPerBatch={13}
+        windowSize={7}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 }
 

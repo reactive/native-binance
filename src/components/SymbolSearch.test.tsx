@@ -110,12 +110,12 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-function mount() {
+function mount(withTickers = true) {
   const onChoose = jest.fn();
   const onDismiss = jest.fn();
   act(() => {
     tree = TestRenderer.create(
-      <DataProvider initialState={mockInitialState(fixtures)}>
+      <DataProvider initialState={mockInitialState(withTickers ? fixtures : fixtures.slice(0, 1))}>
         <ControllerProbe />
         <SymbolSearch onChoose={onChoose} onDismiss={onDismiss} />
       </DataProvider>,
@@ -206,6 +206,42 @@ it('dismisses from Cancel, Escape, and the system back gesture', () => {
   });
   expect(consumed).toBe(true);
   expect(onDismiss).toHaveBeenCalledTimes(3);
+});
+
+it('ranks by volume once quotes arrive, then keeps that order', () => {
+  mount(false);
+  type('eth');
+  expect(results()).toEqual(['ETHUSDT', 'ETHFIUSDT', 'ETHBTC']);
+
+  actWrite(() => {
+    controller!.set(Ticker, { symbol: 'ETHUSDT' }, ticker('ETHUSDT', '10'));
+    controller!.set(Ticker, { symbol: 'ETHFIUSDT' }, ticker('ETHFIUSDT', '900'));
+    controller!.set(Ticker, { symbol: 'ETHBTC' }, ticker('ETHBTC', '100'));
+  });
+  expect(results()).toEqual(['ETHFIUSDT', 'ETHUSDT', 'ETHBTC']);
+
+  actWrite(() => controller!.set(Ticker, { symbol: 'ETHUSDT' }, ticker('ETHUSDT', '5000')));
+  expect(results()).toEqual(['ETHFIUSDT', 'ETHUSDT', 'ETHBTC']);
+});
+
+it('holds the rows on screen while a finger is down as volumes arrive', () => {
+  mount(false);
+  type('eth');
+  act(() => {
+    node('symbol-search-list')?.props.onPointerDown();
+  });
+
+  actWrite(() => {
+    controller!.set(Ticker, { symbol: 'ETHUSDT' }, ticker('ETHUSDT', '10'));
+    controller!.set(Ticker, { symbol: 'ETHFIUSDT' }, ticker('ETHFIUSDT', '900'));
+    controller!.set(Ticker, { symbol: 'ETHBTC' }, ticker('ETHBTC', '100'));
+  });
+  expect(results()).toEqual(['ETHUSDT', 'ETHFIUSDT', 'ETHBTC']);
+
+  act(() => {
+    node('symbol-search-list')?.props.onPointerUp();
+  });
+  expect(results()).toEqual(['ETHFIUSDT', 'ETHUSDT', 'ETHBTC']);
 });
 
 it('keeps the order still between keystrokes while volumes move', () => {
