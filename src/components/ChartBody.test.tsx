@@ -123,7 +123,9 @@ const TRAVEL_PAIRS: ReadonlyArray<readonly [CandleInterval, CandleInterval]> = [
   ['4h', '1d'],
   ['1d', '4h'],
   ['1d', '1w'],
+  ['1d', '1M'],
   ['1w', '1d'],
+  ['1M', '1d'],
 ];
 
 let tree: ReactTestRenderer | undefined;
@@ -762,7 +764,7 @@ async function showPair(from: CandleInterval, to: CandleInterval) {
   await settle();
 }
 
-it('travels the eight adjacent pairs and fades every other ready pair', async () => {
+it('travels day-month and the adjacent nesting pairs, and fades the rest', async () => {
   const values = INTERVALS.map(item => item.value);
   const traveled: string[] = [];
   for (const from of values) {
