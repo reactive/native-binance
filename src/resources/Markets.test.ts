@@ -174,6 +174,29 @@ it('filters on this phone and keeps a halted symbol out of the default list', ()
   expect(ids(result.current.usdc)).toEqual([]);
 });
 
+it('searches every quote and stays empty until there is a query', () => {
+  const { result } = renderDataHook(
+    () => ({
+      idle: useQuery(getMarkets, { allQuotes: true, sort: 'volume' as const, q: '' }),
+      eth: useQuery(getMarkets, { allQuotes: true, sort: 'volume' as const, q: 'eth' }),
+      btc: useQuery(getMarkets, { allQuotes: true, sort: 'volume' as const, q: 'btc' }),
+      sol: useQuery(getMarkets, { allQuotes: true, sort: 'name' as const, q: 'sol' }),
+      none: useQuery(getMarkets, { allQuotes: true, q: 'zzzz' }),
+      usdt: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const }),
+    }),
+    { initialFixtures: fixtures },
+  );
+
+  expect(ids(result.current.idle)).toEqual([]);
+  expect(ids(result.current.eth)).toEqual(['ETHUSDT']);
+  expect(ids(result.current.btc)).toEqual(['BTCUSDC', 'BTCUSDT', 'BNBBTC']);
+  expect(result.current.btc?.[2]?.status).toBe('BREAK');
+  expect(ids(result.current.sol)).toEqual(['SOLUSDT']);
+  expect(result.current.sol?.[0]?.status).toBe('HALT');
+  expect(ids(result.current.none)).toEqual([]);
+  expect(ids(result.current.usdt)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
+});
+
 it('reads a mini-ticker array', () => {
   const raw = JSON.stringify([
     { e: '24hrMiniTicker', E: 1, s: 'BTCUSDT', c: '1', o: '1', h: '1', l: '1', v: '1', q: '1' },

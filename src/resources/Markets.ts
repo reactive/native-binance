@@ -13,6 +13,11 @@ export type MarketArgs = {
   sort?: MarketSort;
   /** When true, list the device watch set. Any other value keeps the trading list. */
   watching?: boolean;
+  /**
+   * Search every quote and ignore `quote`. An empty query returns no rows,
+   * because this path has no chip to list.
+   */
+  allQuotes?: boolean;
 };
 
 function readArgs(arg: MarketArgs | undefined): { quote: string; sort: MarketSort; q: string } {
@@ -66,9 +71,12 @@ function watched(
 
 function trading(symbols: readonly MarketSymbol[], arg: MarketArgs | undefined): MarketSymbol[] {
   const { quote, sort, q } = readArgs(arg);
+  const everyQuote = arg?.allQuotes === true;
+  if (everyQuote && !q) return [];
   const rows: MarketSymbol[] = [];
   for (const symbol of symbols) {
-    if (symbol.quoteAsset !== quote || !matchesQuery(symbol, q)) continue;
+    if (!matchesQuery(symbol, q)) continue;
+    if (!everyQuote && symbol.quoteAsset !== quote) continue;
     // Halted and paused symbols stay out of the default list. A search that hits one includes it.
     if (!q && symbol.status !== 'TRADING') continue;
     rows.push(symbol);
