@@ -2,9 +2,9 @@ import { renderHook, act } from '@data-client/test';
 import { NavigationContext } from 'expo-router/build/react-navigation/core/NavigationContext';
 import type { NavigationProp } from 'expo-router/build/react-navigation/core/types';
 import { ScreenRemovalPreventionSetterContext } from 'expo-router/build/global-state/removalPrevention';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
-import { useDismissSearchOnBack } from '@/components/dismissSearch';
+import { goToSymbol, useDismissSearchOnBack } from '@/components/dismissSearch';
 
 const back = { type: 'GO_BACK' as const };
 
@@ -86,5 +86,72 @@ it('lets back leave the symbol screen once search is closed', () => {
   });
 
   expect(dismissals()).toBe(1);
+  expect(navigation.dispatched).toEqual([]);
+});
+
+function renderChooser() {
+  const navigation = createNavigation();
+  const prevented: boolean[] = [];
+  const replaced: string[] = [];
+  let preventedDuringReplace: boolean | undefined;
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <NavigationContext.Provider value={navigation as unknown as NavigationProp<Record<string, object | undefined>>}>
+      <ScreenRemovalPreventionSetterContext.Provider
+        value={(_id, isPrevented) => {
+          prevented.push(isPrevented);
+        }}
+      >
+        {children}
+      </ScreenRemovalPreventionSetterContext.Provider>
+    </NavigationContext.Provider>
+  );
+  const hook = renderHook(
+    () => {
+      const [open, setOpen] = useState(true);
+      const release = useDismissSearchOnBack(open, () => {
+        setOpen(false);
+      });
+      return (next: string) => {
+        goToSymbol('BTCUSDT', next, () => setOpen(false), release, path => {
+          preventedDuringReplace = prevented.at(-1);
+          replaced.push(path);
+        });
+      };
+    },
+    { wrapper },
+  );
+  return {
+    navigation,
+    prevented,
+    replaced,
+    preventedDuringReplace: () => preventedDuringReplace,
+    ...hook,
+  };
+}
+
+it('replaces the symbol after prevention is off', () => {
+  const { navigation, prevented, replaced, preventedDuringReplace, result } = renderChooser();
+
+  expect(prevented.at(-1)).toBe(true);
+
+  act(() => {
+    result.current('ETHUSDT');
+  });
+
+  expect(replaced).toEqual(['/symbol/ETHUSDT']);
+  expect(preventedDuringReplace()).toBe(false);
+  expect(prevented.at(-1)).toBe(false);
+  expect(navigation.dispatched).toEqual([]);
+});
+
+it('closes search without navigating when the pair is unchanged', () => {
+  const { navigation, prevented, replaced, result } = renderChooser();
+
+  act(() => {
+    result.current('BTCUSDT');
+  });
+
+  expect(replaced).toEqual([]);
+  expect(prevented.at(-1)).toBe(false);
   expect(navigation.dispatched).toEqual([]);
 });

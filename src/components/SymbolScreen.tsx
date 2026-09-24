@@ -6,7 +6,7 @@ import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChartBody from '@/components/ChartBody';
-import { useDismissSearchOnBack } from '@/components/dismissSearch';
+import { goToSymbol, useDismissSearchOnBack } from '@/components/dismissSearch';
 import { InstrumentInfo } from '@/components/InstrumentInfo';
 import { LoadError } from '@/components/LoadError';
 import OrderBookView from '@/components/OrderBookView';
@@ -399,13 +399,11 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   );
   const retryLoad = () => setRetry(count => count + 1);
   const openSearch = () => setSearching(true);
-  useDismissSearchOnBack(searching, () => setSearching(false));
+  const releaseSearch = useDismissSearchOnBack(searching, () => setSearching(false));
   const chooseSymbol = (next: string) => {
-    if (next === symbol) {
-      setSearching(false);
-      return;
-    }
-    router.replace(`/symbol/${next}` as Href);
+    goToSymbol(symbol, next, () => setSearching(false), releaseSearch, path => {
+      router.replace(path as Href);
+    });
   };
   // The lazy route's first render is still inside the route promise. A fetch that
   // settles there updates the store before DataProvider has committed. React drops
