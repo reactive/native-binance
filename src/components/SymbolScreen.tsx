@@ -10,6 +10,7 @@ import { InstrumentInfo } from '@/components/InstrumentInfo';
 import { LoadError } from '@/components/LoadError';
 import OrderBookView from '@/components/OrderBookView';
 import { Reconnecting } from '@/components/Reconnecting';
+import { useDismissSearchOnBack } from '@/components/searchBack';
 import { SymbolSearch } from '@/components/SymbolSearch';
 import { TickerFeed } from '@/components/TickerFeed';
 import TradeTape from '@/components/TradeTape';
@@ -399,6 +400,9 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   const retryLoad = () => setRetry(count => count + 1);
   const openSearch = useCallback(() => setSearching(true), []);
   const closeSearch = useCallback(() => setSearching(false), []);
+  useDismissSearchOnBack(searching, closeSearch);
+  // setParams keeps this route. Prevention only blocks removal, so the choice
+  // is not swallowed, and prevention does not have to be cleared first.
   const chooseSymbol = useCallback(
     (next: string) => {
       if (next === symbol) setSearching(false);
