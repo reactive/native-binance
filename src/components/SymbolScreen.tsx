@@ -112,7 +112,20 @@ function WatchControl({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
-function TopBar({ symbol, retry }: { symbol: string; retry: number }): JSX.Element {
+function TopBar({
+  symbol,
+  retry,
+  committed,
+}: {
+  symbol: string;
+  retry: number;
+  committed: boolean;
+}): JSX.Element {
+  const pair = (
+    <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair" style={styles.pair}>
+      {symbol}
+    </Heading>
+  );
   return (
     <View style={styles.topBar}>
       <Pressable
@@ -125,21 +138,15 @@ function TopBar({ symbol, retry }: { symbol: string; retry: number }): JSX.Eleme
         <Text role="heading">←</Text>
       </Pressable>
       <View style={styles.title}>
-        <AsyncBoundary
-          key={retry}
-          fallback={
-            <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair" style={styles.pair}>
-              {symbol}
-            </Heading>
-          }
-          errorComponent={() => (
-            <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair" style={styles.pair}>
-              {symbol}
-            </Heading>
-          )}
-        >
-          <PairTitle symbol={symbol} />
-        </AsyncBoundary>
+        {committed ?
+          <AsyncBoundary
+            key={retry}
+            fallback={pair}
+            errorComponent={() => pair}
+          >
+            <PairTitle symbol={symbol} />
+          </AsyncBoundary>
+        : pair}
       </View>
       <WatchControl symbol={symbol} />
     </View>
@@ -374,26 +381,40 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   const [chartInterval, setChartInterval] = useState<CandleInterval>('15m');
   const [chartHold, setChartHold] = useState<CandleInterval | null>(null);
   const [retry, setRetry] = useState(0);
+  const [committed, setCommitted] = useState(false);
   const streams = useMemo(
     () => streamUrls(symbol, segment, chartInterval, chartHold),
     [symbol, segment, chartInterval, chartHold],
   );
   const retryLoad = () => setRetry(count => count + 1);
+  // The lazy route's first render is still inside the route promise. A fetch that
+  // settles there updates the store before DataProvider has committed. React drops
+  // that update, retries the read, and the log box turns the warning into an
+  // update-depth loop. Wait until this screen has committed before suspending.
+  useEffect(() => {
+    setCommitted(true);
+  }, []);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
-      <TopBar symbol={symbol} retry={retry} />
-      <TickerFeed />
-      <AsyncBoundary
-        key={retry}
-        fallback={<PriceStripFallback streams={streams} />}
-        errorComponent={() => <PriceStripFallback streams={streams} />}
-      >
-        <PriceStrip symbol={symbol} streams={streams} />
-      </AsyncBoundary>
+      <TopBar symbol={symbol} retry={retry} committed={committed} />
+      {committed ? <TickerFeed /> : null}
+      {committed ?
+        <AsyncBoundary
+          key={retry}
+          fallback={<PriceStripFallback streams={streams} />}
+          errorComponent={() => <PriceStripFallback streams={streams} />}
+        >
+          <PriceStrip symbol={symbol} streams={streams} />
+        </AsyncBoundary>
+      : <PriceStripFallback streams={streams} />}
       <Segments segment={segment} onSelect={setSegment} />
       <View style={styles.body} testID="symbol-body">
-        {segment === 'Book' ?
+        {!committed ?
+          <Text tone="secondary" testID="chart-loading" style={styles.message}>
+            Loading {symbol}
+          </Text>
+        : segment === 'Book' ?
           <AsyncBoundary
             key={retry}
             fallback={
