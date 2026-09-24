@@ -1,7 +1,8 @@
 import { useQuery } from '@data-client/react';
 import { Input, Text, useTheme } from '@reactive/silk-native';
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import {
+  BackHandler,
   FlatList,
   Pressable,
   StyleSheet,
@@ -9,14 +10,12 @@ import {
   type ListRenderItem,
 } from 'react-native';
 
-import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
 import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
-import { getMarkets } from '@/resources/Markets';
+import { findSymbols, searchKey } from '@/resources/Markets';
 
 const TOP_BAR = 48;
-const FIELD_WIDTH = 172;
-const GUTTER = 12;
 const HIT = 44;
+const GUTTER = 12;
 
 function getItemLayout(_: ArrayLike<string> | null | undefined, index: number) {
   return { length: MARKET_ROW_HEIGHT, offset: MARKET_ROW_HEIGHT * index, index };
@@ -26,138 +25,142 @@ function keyExtractor(symbol: string): string {
   return symbol;
 }
 
-/** The markets field and rows, opened from a pair title. Empty and no-match stay blank. */
-export function SymbolSearch({
-  onDismiss,
-  onSelect,
+function SymbolResults({
+  query,
+  onChoose,
 }: {
+  query: string;
+  onChoose: (symbol: string) => void;
+}): JSX.Element | null {
+  const q = searchKey(query);
+  const args = useMemo(() => ({ q }), [q]);
+  const rows = useQuery(findSymbols, args);
+  const liveIds = useMemo(() => (rows ?? []).map(row => row.symbol), [rows]);
+  // Order is fixed per query. A volume tick between keystrokes must not move the row under a finger.
+  const shown = useRef({ q, ids: liveIds });
+  if (shown.current.q !== q || shown.current.ids.length !== liveIds.length) {
+    shown.current = { q, ids: liveIds };
+  }
+  const ids = shown.current.ids;
+  const renderItem = useCallback<ListRenderItem<string>>(
+    ({ item }) => <MarketRow symbol={item} onPress={onChoose} />,
+    [onChoose],
+  );
+
+  if (!q || rows === undefined) return null;
+  if (ids.length === 0) {
+    return (
+      <Text tone="secondary" testID="symbol-search-empty" style={styles.empty}>
+        No markets match
+      </Text>
+    );
+  }
+  return (
+    <FlatList
+      key={q}
+      testID="symbol-search-results"
+      data={ids}
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
+      getItemLayout={getItemLayout}
+      keyboardShouldPersistTaps="handled"
+      initialNumToRender={13}
+      maxToRenderPerBatch={13}
+      windowSize={7}
+      showsVerticalScrollIndicator={false}
+    />
+  );
+}
+
+/** Covers the symbol screen and leaves it mounted, so dismissing returns to the same reading. */
+export function SymbolSearch({
+  onChoose,
+  onDismiss,
+}: {
+  onChoose: (symbol: string) => void;
   onDismiss: () => void;
-  onSelect: (symbol: string) => void;
 }): JSX.Element {
   const { theme } = useTheme();
   const [query, setQuery] = useState('');
-  const q = query.trim().toLowerCase();
-  const args = useMemo(() => ({ allQuotes: true, sort: 'volume' as const, q }), [q]);
-  const rows = useQuery(getMarkets, args) ?? [];
-  const volumesReady =
-    rows.length > 0 && rows.every(row => row.ticker != null || row.status !== 'TRADING');
-  const liveIds = useMemo(() => rows.map(row => row.symbol), [rows]);
-  const liveRef = useRef(liveIds);
-  liveRef.current = liveIds;
-
-  const [hold, dispatch] = useReducer(holdOrder, idleHold);
-  const argsSeen = useRef(q);
-  if (argsSeen.current !== q) {
-    argsSeen.current = q;
-    const event: HoldEvent = { type: 'args', ids: liveIds, ready: volumesReady };
-    dispatch(event);
-  }
 
   useEffect(() => {
-    if (!volumesReady) return;
-    dispatch({ type: 'ready', ids: liveRef.current });
-  }, [volumesReady, liveIds]);
-
-  const holdFinger = useCallback(() => {
-    dispatch({ type: 'down', ids: liveRef.current });
-  }, []);
-  const releaseFinger = useCallback(() => {
-    dispatch({ type: 'up', ids: liveRef.current });
-  }, []);
-
-  const ids = hold.committed ?? liveIds;
-  const renderItem = useCallback<ListRenderItem<string>>(
-    ({ item }) => <MarketRow symbol={item} onPress={onSelect} />,
-    [onSelect],
-  );
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onDismiss();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onDismiss]);
 
   return (
     <View
       testID="symbol-search"
-      style={[styles.fill, { backgroundColor: theme.semantic.color.surface }]}
+      style={[styles.sheet, { backgroundColor: theme.semantic.color.surface }]}
     >
-      <View style={styles.topBar}>
-        <Pressable
-          testID="symbol-search-dismiss"
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={onDismiss}
-          style={styles.hit}
-        >
-          <Text role="heading">←</Text>
-        </Pressable>
-        <View style={styles.gap} />
+      <View style={styles.bar}>
         <Input
           size="sm"
           value={query}
           onChangeText={setQuery}
+          onKeyPress={event => {
+            if (event.nativeEvent.key === 'Escape') onDismiss();
+          }}
           placeholder="Find a symbol"
           accessibilityLabel="Find a symbol"
+          autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="off"
           spellCheck={false}
-          autoFocus
           testID="symbol-search-field"
-          style={styles.search}
+          style={styles.field}
         />
-      </View>
-      {ids.length === 0 ?
-        null
-      : <View
-          style={styles.list}
-          onTouchStart={holdFinger}
-          onTouchEnd={releaseFinger}
-          onTouchCancel={releaseFinger}
-          onPointerDown={holdFinger}
-          onPointerUp={releaseFinger}
-          onPointerCancel={releaseFinger}
+        <Pressable
+          testID="symbol-search-cancel"
+          accessibilityRole="button"
+          onPress={onDismiss}
+          style={styles.cancel}
         >
-          <FlatList
-            key={q}
-            testID="symbol-search-results"
-            data={ids}
-            renderItem={renderItem}
-            keyExtractor={keyExtractor}
-            getItemLayout={getItemLayout}
-            keyboardShouldPersistTaps="handled"
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            showsVerticalScrollIndicator={false}
-          />
-        </View>
-      }
+          <Text role="label">Cancel</Text>
+        </Pressable>
+      </View>
+      <View style={styles.list}>
+        <SymbolResults query={query} onChoose={onChoose} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
+  sheet: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
-  topBar: {
+  bar: {
     height: TOP_BAR,
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingLeft: GUTTER,
   },
-  hit: {
-    width: HIT,
-    height: HIT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gap: {
+  field: {
     flex: 1,
+    minWidth: 0,
   },
-  search: {
-    width: FIELD_WIDTH,
-    flexGrow: 0,
-    flexShrink: 0,
-    marginRight: GUTTER,
+  cancel: {
+    height: HIT,
+    justifyContent: 'center',
+    paddingLeft: 8,
+    paddingRight: GUTTER,
   },
   list: {
     flex: 1,
+    minHeight: 0,
+  },
+  empty: {
+    paddingHorizontal: GUTTER,
+    paddingTop: GUTTER,
   },
 });

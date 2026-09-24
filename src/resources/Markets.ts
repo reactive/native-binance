@@ -13,11 +13,6 @@ export type MarketArgs = {
   sort?: MarketSort;
   /** When true, list the device watch set. Any other value keeps the trading list. */
   watching?: boolean;
-  /**
-   * Search every quote and ignore `quote`. An empty query returns no rows,
-   * because this path has no chip to list.
-   */
-  allQuotes?: boolean;
 };
 
 function readArgs(arg: MarketArgs | undefined): { quote: string; sort: MarketSort; q: string } {
@@ -71,12 +66,9 @@ function watched(
 
 function trading(symbols: readonly MarketSymbol[], arg: MarketArgs | undefined): MarketSymbol[] {
   const { quote, sort, q } = readArgs(arg);
-  const everyQuote = arg?.allQuotes === true;
-  if (everyQuote && !q) return [];
   const rows: MarketSymbol[] = [];
   for (const symbol of symbols) {
-    if (!matchesQuery(symbol, q)) continue;
-    if (!everyQuote && symbol.quoteAsset !== quote) continue;
+    if (symbol.quoteAsset !== quote || !matchesQuery(symbol, q)) continue;
     // Halted and paused symbols stay out of the default list. A search that hits one includes it.
     if (!q && symbol.status !== 'TRADING') continue;
     rows.push(symbol);
@@ -84,6 +76,60 @@ function trading(symbols: readonly MarketSymbol[], arg: MarketArgs | undefined):
   rows.sort((a, b) => compareMarket(a, b, sort));
   return rows;
 }
+
+/** Quote chips on Markets, in order. Search ranks pairs in these quotes first. */
+export const MARKET_QUOTES = ['USDT', 'USDC', 'FDUSD', 'BTC', 'ETH'] as const;
+
+/** Letters and digits only, so `eth/usdt` and `ETH USDT` both find `ETHUSDT`. */
+export function searchKey(q: string | undefined): string {
+  return (q ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function rankOf(symbol: MarketSymbol, q: string): number {
+  const id = symbol.symbol.toLowerCase();
+  if (id === q) return 0;
+  if (symbol.baseAsset.toLowerCase().startsWith(q)) return 1;
+  if (id.startsWith(q)) return 2;
+  return 3;
+}
+
+function quoteRank(symbol: MarketSymbol): number {
+  const index = (MARKET_QUOTES as readonly string[]).indexOf(symbol.quoteAsset);
+  return index === -1 ? MARKET_QUOTES.length : index;
+}
+
+/**
+ * Every quote, halted symbols included. An exact pair leads, then base-asset prefixes,
+ * then a symbol prefix, then any other match. Within each, trading before halted, then
+ * quote chip order, then quote volume. Volume only compares within one quote, since
+ * `25.6B BIDR` is not larger than `1.84B USDT`. An empty query matches nothing.
+ */
+export const findSymbols = new Query(
+  new All(MarketSymbol),
+  (symbols: MarketSymbol[], arg?: { q?: string }) => {
+    const q = searchKey(arg?.q);
+    if (!q) return [];
+    const hits: { symbol: MarketSymbol; rank: number }[] = [];
+    for (const symbol of symbols) {
+      if (!symbol.symbol.toLowerCase().includes(q)) continue;
+      hits.push({ symbol, rank: rankOf(symbol, q) });
+    }
+    hits.sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      const halted = Number(a.symbol.status !== 'TRADING') - Number(b.symbol.status !== 'TRADING');
+      if (halted !== 0) return halted;
+      const quote = quoteRank(a.symbol) - quoteRank(b.symbol);
+      if (quote !== 0) return quote;
+      if (a.symbol.quoteAsset !== b.symbol.quoteAsset) {
+        return a.symbol.quoteAsset.localeCompare(b.symbol.quoteAsset);
+      }
+      const va = volumeOf(a.symbol.ticker);
+      const vb = volumeOf(b.symbol.ticker);
+      return va === vb ? 0 : vb - va;
+    });
+    return hits.map(hit => hit.symbol);
+  },
+);
 
 /** Names paint from `All(MarketSymbol)` while `ticker` is still undefined. */
 export const getMarkets = new Query(

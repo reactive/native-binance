@@ -1,12 +1,11 @@
 import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
-import { router, type Href } from 'expo-router';
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChartBody from '@/components/ChartBody';
-import { goToSymbol, useDismissSearchOnBack } from '@/components/dismissSearch';
 import { InstrumentInfo } from '@/components/InstrumentInfo';
 import { LoadError } from '@/components/LoadError';
 import OrderBookView from '@/components/OrderBookView';
@@ -142,9 +141,9 @@ function TopBar({
         <Text role="heading">←</Text>
       </Pressable>
       <Pressable
-        testID="symbol-pair-search"
+        testID="symbol-search-open"
         accessibilityRole="button"
-        accessibilityHint="Find a symbol"
+        accessibilityHint="Find another symbol"
         onPress={onSearch}
         style={styles.title}
       >
@@ -398,13 +397,15 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
     [symbol, segment, chartInterval, chartHold],
   );
   const retryLoad = () => setRetry(count => count + 1);
-  const openSearch = () => setSearching(true);
-  const releaseSearch = useDismissSearchOnBack(searching, () => setSearching(false));
-  const chooseSymbol = (next: string) => {
-    goToSymbol(symbol, next, () => setSearching(false), releaseSearch, path => {
-      router.replace(path as Href);
-    });
-  };
+  const openSearch = useCallback(() => setSearching(true), []);
+  const closeSearch = useCallback(() => setSearching(false), []);
+  const chooseSymbol = useCallback(
+    (next: string) => {
+      if (next === symbol) setSearching(false);
+      else router.setParams({ symbol: next });
+    },
+    [symbol],
+  );
   // The lazy route's first render is still inside the route promise. A fetch that
   // settles there updates the store before DataProvider has committed. React drops
   // that update, retries the read, and the log box turns the warning into an
@@ -415,86 +416,80 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
-      <View style={styles.screen}>
-        <View
-          pointerEvents={searching ? 'none' : 'auto'}
-          accessibilityElementsHidden={searching}
-          importantForAccessibility={searching ? 'no-hide-descendants' : 'auto'}
-          style={styles.screen}
-        >
-          <TopBar symbol={symbol} retry={retry} committed={committed} onSearch={openSearch} />
-          {committed ? <TickerFeed /> : null}
-          {committed ?
+      <View
+        pointerEvents={searching ? 'none' : 'auto'}
+        accessibilityElementsHidden={searching}
+        importantForAccessibility={searching ? 'no-hide-descendants' : 'auto'}
+        style={styles.screen}
+      >
+        <TopBar symbol={symbol} retry={retry} committed={committed} onSearch={openSearch} />
+        {committed ? <TickerFeed /> : null}
+        {committed ?
+          <AsyncBoundary
+            key={retry}
+            fallback={<PriceStripFallback streams={streams} />}
+            errorComponent={() => <PriceStripFallback streams={streams} />}
+          >
+            <PriceStrip symbol={symbol} streams={streams} />
+          </AsyncBoundary>
+        : <PriceStripFallback streams={streams} />}
+        <Segments segment={segment} onSelect={setSegment} />
+        <View style={styles.body} testID="symbol-body">
+          {!committed ?
+            <Text tone="secondary" testID="chart-loading" style={styles.message}>
+              Loading {symbol}
+            </Text>
+          : segment === 'Book' ?
             <AsyncBoundary
               key={retry}
-              fallback={<PriceStripFallback streams={streams} />}
-              errorComponent={() => <PriceStripFallback streams={streams} />}
+              fallback={
+                <Text tone="secondary" testID="book-loading" style={styles.message}>
+                  Loading {symbol}
+                </Text>
+              }
+              errorComponent={() => (
+                <LoadError what={`the ${symbol} book`} onRetry={retryLoad} />
+              )}
             >
-              <PriceStrip symbol={symbol} streams={streams} />
+              <LiveBook symbol={symbol} />
             </AsyncBoundary>
-          : <PriceStripFallback streams={streams} />}
-          <Segments segment={segment} onSelect={setSegment} />
-          <View style={styles.body} testID="symbol-body">
-            {!committed ?
-              <Text tone="secondary" testID="chart-loading" style={styles.message}>
-                Loading {symbol}
-              </Text>
-            : segment === 'Book' ?
-              <AsyncBoundary
-                key={retry}
-                fallback={
-                  <Text tone="secondary" testID="book-loading" style={styles.message}>
-                    Loading {symbol}
-                  </Text>
-                }
-                errorComponent={() => (
-                  <LoadError what={`the ${symbol} book`} onRetry={retryLoad} />
-                )}
-              >
-                <LiveBook symbol={symbol} />
-              </AsyncBoundary>
-            : segment === 'Trades' ?
-              <AsyncBoundary
-                key={retry}
-                fallback={
-                  <Text tone="secondary" testID="trades-loading" style={styles.message}>
-                    Loading {symbol}
-                  </Text>
-                }
-                errorComponent={() => <LoadError what={`${symbol} trades`} onRetry={retryLoad} />}
-              >
-                <TradeTape symbol={symbol} />
-              </AsyncBoundary>
-            : segment === 'Chart' ?
-              <ChartBody
-                symbol={symbol}
-                interval={chartInterval}
-                onInterval={setChartInterval}
-                onRetry={retryLoad}
-                retry={retry}
-                onHold={setChartHold}
-              />
-            : segment === 'Info' ?
-              <AsyncBoundary
-                key={retry}
-                fallback={
-                  <Text tone="secondary" testID="info-loading" style={styles.message}>
-                    Loading {symbol}
-                  </Text>
-                }
-                errorComponent={() => <LoadError what={`${symbol} details`} onRetry={retryLoad} />}
-              >
-                <InstrumentInfo symbol={symbol} />
-              </AsyncBoundary>
-            : null}
-          </View>
+          : segment === 'Trades' ?
+            <AsyncBoundary
+              key={retry}
+              fallback={
+                <Text tone="secondary" testID="trades-loading" style={styles.message}>
+                  Loading {symbol}
+                </Text>
+              }
+              errorComponent={() => <LoadError what={`${symbol} trades`} onRetry={retryLoad} />}
+            >
+              <TradeTape symbol={symbol} />
+            </AsyncBoundary>
+          : segment === 'Chart' ?
+            <ChartBody
+              symbol={symbol}
+              interval={chartInterval}
+              onInterval={setChartInterval}
+              onRetry={retryLoad}
+              retry={retry}
+              onHold={setChartHold}
+            />
+          : segment === 'Info' ?
+            <AsyncBoundary
+              key={retry}
+              fallback={
+                <Text tone="secondary" testID="info-loading" style={styles.message}>
+                  Loading {symbol}
+                </Text>
+              }
+              errorComponent={() => <LoadError what={`${symbol} details`} onRetry={retryLoad} />}
+            >
+              <InstrumentInfo symbol={symbol} />
+            </AsyncBoundary>
+          : null}
         </View>
-        {searching ?
-          <View style={styles.searchLayer} accessibilityViewIsModal>
-            <SymbolSearch onDismiss={() => setSearching(false)} onSelect={chooseSymbol} />
-          </View>
-        : null}
       </View>
+      {searching ? <SymbolSearch onChoose={chooseSymbol} onDismiss={closeSearch} /> : null}
     </SafeAreaView>
   );
 }
@@ -505,13 +500,6 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-  },
-  searchLayer: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
   },
   topBar: {
     height: TOP_BAR,
@@ -530,6 +518,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
+    height: HIT,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 0,
