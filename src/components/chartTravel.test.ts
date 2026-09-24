@@ -182,6 +182,30 @@ it('classifies the fully-inside set and the straddler', () => {
   expect(zoomOut.straddler).toBe(Date.parse('2026-09-23T00:00:00.000Z'));
 });
 
+it('travels a day and a month when the prior month opens before the oldest day', () => {
+  const cases = [
+    { now: Date.parse('2026-09-30T18:00:00.000Z'), k: 30, straddler: Date.parse('2026-08-01T00:00:00.000Z') },
+    { now: Date.parse('2026-01-31T18:00:00.000Z'), k: 31, straddler: Date.parse('2025-12-01T00:00:00.000Z') },
+  ];
+  for (const late of cases) {
+    const days = build('1d', 60, late.now);
+    const months = build('1M', 60, late.now);
+    const zoomOut = planTravel(input('1d', '1M', { now: late.now, origin: days, target: months }));
+    const zoomIn = planTravel(input('1M', '1d', { now: late.now, origin: months, target: days }));
+    expect(zoomOut.ok).toBe(true);
+    expect(zoomIn.ok).toBe(true);
+    if (!zoomOut.ok || !zoomIn.ok) continue;
+    expect(zoomOut.plan.fullyInside).toBe(0);
+    expect(zoomOut.plan.straddler).toBe(late.straddler);
+    expect(zoomOut.plan.k).toBe(late.k);
+    expect(zoomIn.plan.k).toBe(late.k);
+    expect(zoomOut.plan.duration).toBe(travelDuration(late.k));
+    const weeks = build('1w', 60, late.now);
+    expect(planTravel(input('1w', '1M', { now: late.now, origin: weeks, target: months })).ok).toBe(false);
+    expect(planTravel(input('1M', '1w', { now: late.now, origin: months, target: weeks })).ok).toBe(false);
+  }
+});
+
 it('matches rest rectangles at both ends and the 40% handoff', () => {
   for (const [from, to] of PAIRS) {
     const plan = assume(from, to);

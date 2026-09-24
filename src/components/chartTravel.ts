@@ -262,6 +262,7 @@ export function planTravel(input: TravelInput): { ok: true; plan: TravelPlan } |
   const windowStart = finer[0].openTime;
   const covered = new Set<number>();
   let fullyInside = 0;
+  let closedOverlap = 0;
   let straddler: number | null = null;
   const outsideCentres: number[] = [];
   const slot = Math.floor((input.width * input.ratio) / CANDLE_LIMIT);
@@ -279,9 +280,12 @@ export function planTravel(input: TravelInput): { ok: true; plan: TravelPlan } |
     covered.add(candle.openTime);
     if (candle.openTime >= windowStart && end <= input.now) fullyInside += 1;
     else if (candle.openTime < windowStart && end > windowStart) straddler = candle.openTime;
+    // A month that has closed still overlaps when its open is a day or two
+    // before the oldest day. The forming month does not count.
+    if (pair.k == null && end <= input.now) closedOverlap += 1;
   }
-  // Sixty days cover one complete month, not four. Other pairs still need four.
-  if (fullyInside < (pair.k == null ? 1 : 4)) return { ok: false, reason: 'inside' };
+  // Sixty days hold one closed month, not four. Other pairs still need four fully inside.
+  if (pair.k == null ? closedOverlap < 1 : fullyInside < 4) return { ok: false, reason: 'inside' };
 
   if (finerInterval === '1M') return { ok: false, reason: 'pair' };
   const k = pair.k ?? monthDays(finer[finer.length - 1].openTime);
