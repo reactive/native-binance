@@ -102,10 +102,12 @@ const PAIRS: ReadonlyArray<readonly [CandleInterval, CandleInterval]> = [
   ['4h', '1d'],
   ['1d', '4h'],
   ['1d', '1w'],
+  ['1d', '1M'],
   ['1w', '1d'],
+  ['1M', '1d'],
 ];
 
-it('travels exactly the eight adjacent nesting pairs', () => {
+it('travels the nesting pairs, including a day and a month', () => {
   const values = INTERVALS.map(item => item.value);
   expect(values.length * (values.length - 1)).toBe(42);
   const traveled: string[] = [];
@@ -148,6 +150,18 @@ it('keeps weeks on Monday and months on the calendar', () => {
   expect(assume('1d', '1w', { now: year, origin: build('1d', 60, year), target: build('1w', 60, year) }).k).toBe(
     7,
   );
+  const september = assume('1d', '1M');
+  expect(september.k).toBe(30);
+  expect(september.duration).toBe(travelDuration(30));
+  expect(assume('1M', '1d').k).toBe(30);
+  const leap = Date.parse('2024-02-29T12:00:00.000Z');
+  expect(assume('1d', '1M', { now: leap, origin: build('1d', 60, leap), target: build('1M', 60, leap) }).k).toBe(
+    29,
+  );
+  const march = Date.parse('2026-03-15T12:00:00.000Z');
+  expect(assume('1M', '1d', { now: march, origin: build('1M', 60, march), target: build('1d', 60, march) }).k).toBe(
+    31,
+  );
 });
 
 it('classifies the fully-inside set and the straddler', () => {
@@ -159,11 +173,37 @@ it('classifies the fully-inside set and the straddler', () => {
     const expected = oracle(finer, coarser, coarserInterval, NOW);
     expect(plan.fullyInside).toBe(expected.inside);
     expect(plan.straddler).toBe(expected.straddler);
-    expect(plan.fullyInside).toBeGreaterThanOrEqual(4);
+    const dayMonth = (from === '1d' && to === '1M') || (from === '1M' && to === '1d');
+    expect(plan.fullyInside).toBeGreaterThanOrEqual(dayMonth ? 1 : 4);
   }
+  expect(assume('1d', '1M').fullyInside).toBe(1);
   const zoomOut = assume('15m', '1h');
   expect(zoomOut.fullyInside).toBe(14);
   expect(zoomOut.straddler).toBe(Date.parse('2026-09-23T00:00:00.000Z'));
+});
+
+it('travels a day and a month when the prior month opens before the oldest day', () => {
+  const cases = [
+    { now: Date.parse('2026-09-30T18:00:00.000Z'), k: 30, straddler: Date.parse('2026-08-01T00:00:00.000Z') },
+    { now: Date.parse('2026-01-31T18:00:00.000Z'), k: 31, straddler: Date.parse('2025-12-01T00:00:00.000Z') },
+  ];
+  for (const late of cases) {
+    const days = build('1d', 60, late.now);
+    const months = build('1M', 60, late.now);
+    const zoomOut = planTravel(input('1d', '1M', { now: late.now, origin: days, target: months }));
+    const zoomIn = planTravel(input('1M', '1d', { now: late.now, origin: months, target: days }));
+    expect(zoomOut.ok).toBe(true);
+    expect(zoomIn.ok).toBe(true);
+    if (!zoomOut.ok || !zoomIn.ok) continue;
+    expect(zoomOut.plan.fullyInside).toBe(0);
+    expect(zoomOut.plan.straddler).toBe(late.straddler);
+    expect(zoomOut.plan.k).toBe(late.k);
+    expect(zoomIn.plan.k).toBe(late.k);
+    expect(zoomOut.plan.duration).toBe(travelDuration(late.k));
+    const weeks = build('1w', 60, late.now);
+    expect(planTravel(input('1w', '1M', { now: late.now, origin: weeks, target: months })).ok).toBe(false);
+    expect(planTravel(input('1M', '1w', { now: late.now, origin: months, target: weeks })).ok).toBe(false);
+  }
 });
 
 it('matches rest rectangles at both ends and the 40% handoff', () => {
@@ -230,6 +270,8 @@ it('uses the sine table, the spring, and the durations', () => {
   expect(travelDuration(4)).toBe(340);
   expect(travelDuration(6)).toBe(380);
   expect(travelDuration(7)).toBe(400);
+  expect(travelDuration(30)).toBe(540);
+  expect(travelDuration(31)).toBe(550);
   expect(handoffQ(4, true)).toBeCloseTo(0.661, 3);
   expect(handoffQ(4, false)).toBeCloseTo(0.339, 3);
   expect(sineInOut(0)).toBe(0);

@@ -1,7 +1,7 @@
 import { CANDLE_LIMIT, INTERVALS, type CandleInterval } from '@/resources/Candle';
 
 import { PLOT_PAD } from './candleLayout';
-import { intervalMs, periodEnd } from './chartMotion';
+import { intervalMs, periodEnd, periodStart } from './chartMotion';
 
 /** Critically damped clock reaches p = 0.99 at t = D. */
 export const OMEGA_TAU = 6.638;
@@ -10,11 +10,13 @@ export const TRAVEL_COMMIT_MS = 100;
 export const KNOTS = 32;
 export const REST_SPEED = 1e6;
 
-const ADJACENT: ReadonlyArray<readonly [CandleInterval, CandleInterval, number]> = [
+/** `null` means the forming month's UTC day count. 1W↔1M is absent: a week can straddle two months. */
+const ADJACENT: ReadonlyArray<readonly [CandleInterval, CandleInterval, number | null]> = [
   ['15m', '1h', 4],
   ['1h', '4h', 4],
   ['4h', '1d', 6],
   ['1d', '1w', 7],
+  ['1d', '1M', null],
 ];
 
 export type TravelCandle = {
@@ -99,12 +101,18 @@ export function neighbourIntervals(interval: CandleInterval): CandleInterval[] {
 export function travelPair(
   from: CandleInterval,
   to: CandleInterval,
-): { k: number; zoomOut: boolean } | null {
+): { k: number | null; zoomOut: boolean } | null {
   for (const [finer, coarser, k] of ADJACENT) {
     if (from === finer && to === coarser) return { k, zoomOut: true };
     if (from === coarser && to === finer) return { k, zoomOut: false };
   }
   return null;
+}
+
+/** Days in the UTC month containing `openTime`. Months stay out of `intervalMs`. */
+function monthDays(openTime: number): number {
+  const start = periodStart(openTime, '1M');
+  return Math.round((periodEnd(start, '1M') - start) / intervalMs('1d'));
 }
 
 export function travelDuration(k: number): number {
@@ -254,6 +262,7 @@ export function planTravel(input: TravelInput): { ok: true; plan: TravelPlan } |
   const windowStart = finer[0].openTime;
   const covered = new Set<number>();
   let fullyInside = 0;
+  let closedOverlap = 0;
   let straddler: number | null = null;
   const outsideCentres: number[] = [];
   const slot = Math.floor((input.width * input.ratio) / CANDLE_LIMIT);
@@ -271,16 +280,21 @@ export function planTravel(input: TravelInput): { ok: true; plan: TravelPlan } |
     covered.add(candle.openTime);
     if (candle.openTime >= windowStart && end <= input.now) fullyInside += 1;
     else if (candle.openTime < windowStart && end > windowStart) straddler = candle.openTime;
+    // A month that has closed still overlaps when its open is a day or two
+    // before the oldest day. The forming month does not count.
+    if (pair.k == null && end <= input.now) closedOverlap += 1;
   }
-  if (fullyInside < 4) return { ok: false, reason: 'inside' };
+  // Sixty days hold one closed month, not four. Other pairs still need four fully inside.
+  if (pair.k == null ? closedOverlap < 1 : fullyInside < 4) return { ok: false, reason: 'inside' };
 
   if (finerInterval === '1M') return { ok: false, reason: 'pair' };
+  const k = pair.k ?? monthDays(finer[finer.length - 1].openTime);
   const newestLeft = input.width * input.ratio - slot;
   const tFiner = finer[finer.length - 1].openTime;
   const tCoarser = coarser[coarser.length - 1].openTime;
-  const xStar = newestLeft + (slot * (tFiner - tCoarser)) / (intervalMs(finerInterval) * (pair.k - 1));
+  const xStar = newestLeft + (slot * (tFiner - tCoarser)) / (intervalMs(finerInterval) * (k - 1));
   for (const centre of outsideCentres) {
-    if (!(compressedBodyRight(centre, xStar, pair.k, slot) < 0)) return { ok: false, reason: 'edge' };
+    if (!(compressedBodyRight(centre, xStar, k, slot) < 0)) return { ok: false, reason: 'edge' };
   }
 
   const oldLine = priceLine(origin, input.height);
@@ -293,7 +307,7 @@ export function planTravel(input: TravelInput): { ok: true; plan: TravelPlan } |
   for (let j = 0; j <= KNOTS; j += 1) {
     const u = j / KNOTS;
     const q = sineInOut(u);
-    knots.push({ p: springPosition(u), q, s: finerScale(q, pair.k, zoomOut) });
+    knots.push({ p: springPosition(u), q, s: finerScale(q, k, zoomOut) });
   }
 
   return {
@@ -302,13 +316,13 @@ export function planTravel(input: TravelInput): { ok: true; plan: TravelPlan } |
       from: input.from,
       to: input.to,
       zoomOut,
-      k: pair.k,
-      duration: travelDuration(pair.k),
+      k,
+      duration: travelDuration(k),
       xStar,
       a,
       b,
-      qH: handoffQ(pair.k, zoomOut),
-      pH: progressAtQ(handoffQ(pair.k, zoomOut)),
+      qH: handoffQ(k, zoomOut),
+      pH: progressAtQ(handoffQ(k, zoomOut)),
       pEnd: springPosition(1),
       knots,
       origin,
