@@ -14,10 +14,9 @@ import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
 import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
 import { Pill } from '@/components/Pill';
 import { Reconnecting } from '@/components/Reconnecting';
-import { getMarkets, type MarketSort } from '@/resources/Markets';
+import { getMarkets, MARKET_QUOTES, type MarketSort } from '@/resources/Markets';
 import { TICKER_STREAM } from '@/resources/streams';
 
-const QUOTES = ['USDT', 'USDC', 'FDUSD', 'BTC', 'ETH'] as const;
 const SORTS: readonly { id: MarketSort; label: string }[] = [
   { id: 'volume', label: 'Volume' },
   { id: 'change', label: 'Change' },
@@ -97,7 +96,7 @@ export function MarketsChrome({
             testID="quote-watching"
           />
         : null}
-        {QUOTES.map(item => (
+        {MARKET_QUOTES.map(item => (
           <Pill
             key={item}
             label={item}

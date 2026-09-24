@@ -1,7 +1,7 @@
 import { useQuery } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 
-import { getMarkets } from './Markets';
+import { findSymbols, getMarkets } from './Markets';
 import { getExchangeInfo } from './Symbol';
 import { actWrite } from './testSupport';
 import { getTickers, Ticker } from './Ticker';
@@ -174,27 +174,48 @@ it('filters on this phone and keeps a halted symbol out of the default list', ()
   expect(ids(result.current.usdc)).toEqual([]);
 });
 
-it('searches every quote and stays empty until there is a query', () => {
+it('finds symbols across every quote, exact pair and base prefix first', () => {
+  const searched = {
+    symbols: [
+      ...exchange.symbols,
+      symbol('ETHBTC', 'ETH', 'BTC'),
+      symbol('WBTCUSDT', 'WBTC', 'USDT'),
+      symbol('ETHTRY', 'ETH', 'TRY'),
+      symbol('ETHBIDR', 'ETH', 'BIDR', 'BREAK'),
+    ],
+  };
+  const searchedTickers = [
+    ...tickers,
+    ticker('ETHBTC', '0.05', '0.04', '3', 1_000),
+    ticker('WBTCUSDT', '101', '100', '900', 1_000),
+    ticker('ETHTRY', '4000', '3900', '90000', 1_000),
+    ticker('ETHBIDR', '60000000', '59000000', '25000000000', 1_000),
+  ];
   const { result } = renderDataHook(
     () => ({
-      idle: useQuery(getMarkets, { allQuotes: true, sort: 'volume' as const, q: '' }),
-      eth: useQuery(getMarkets, { allQuotes: true, sort: 'volume' as const, q: 'eth' }),
-      btc: useQuery(getMarkets, { allQuotes: true, sort: 'volume' as const, q: 'btc' }),
-      sol: useQuery(getMarkets, { allQuotes: true, sort: 'name' as const, q: 'sol' }),
-      none: useQuery(getMarkets, { allQuotes: true, q: 'zzzz' }),
-      usdt: useQuery(getMarkets, { quote: 'USDT', sort: 'volume' as const }),
+      btc: useQuery(findSymbols, { q: 'btc' }),
+      eth: useQuery(findSymbols, { q: 'eth' }),
+      pair: useQuery(findSymbols, { q: 'BTC / USDT' }),
+      halted: useQuery(findSymbols, { q: 'sol' }),
+      none: useQuery(findSymbols, { q: 'zzzz' }),
+      empty: useQuery(findSymbols, { q: ' / ' }),
     }),
-    { initialFixtures: fixtures },
+    {
+      initialFixtures: [
+        { endpoint: getExchangeInfo, args: [], response: searched },
+        { endpoint: getTickers, args: [], response: searchedTickers },
+      ],
+    },
   );
 
-  expect(ids(result.current.idle)).toEqual([]);
-  expect(ids(result.current.eth)).toEqual(['ETHUSDT']);
-  expect(ids(result.current.btc)).toEqual(['BTCUSDC', 'BTCUSDT', 'BNBBTC']);
-  expect(result.current.btc?.[2]?.status).toBe('BREAK');
-  expect(ids(result.current.sol)).toEqual(['SOLUSDT']);
-  expect(result.current.sol?.[0]?.status).toBe('HALT');
+  // Base prefix, then any other match. Each is trading first, then in quote chip order.
+  expect(ids(result.current.btc)).toEqual(['BTCUSDT', 'BTCUSDC', 'WBTCUSDT', 'ETHBTC', 'BNBBTC']);
+  // A foreign quote's larger number is not more volume, and halted goes last.
+  expect(ids(result.current.eth)).toEqual(['ETHUSDT', 'ETHBTC', 'ETHTRY', 'ETHBIDR']);
+  expect(ids(result.current.pair)).toEqual(['BTCUSDT', 'WBTCUSDT']);
+  expect(ids(result.current.halted)).toEqual(['SOLUSDT']);
   expect(ids(result.current.none)).toEqual([]);
-  expect(ids(result.current.usdt)).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
+  expect(ids(result.current.empty)).toEqual([]);
 });
 
 it('reads a mini-ticker array', () => {
