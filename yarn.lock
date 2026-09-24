@@ -1088,9 +1088,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@expo/cli@npm:^58.0.5":
-  version: 58.0.5
-  resolution: "@expo/cli@npm:58.0.5"
+"@expo/cli@npm:^58.0.6":
+  version: 58.0.6
+  resolution: "@expo/cli@npm:58.0.6"
   dependencies:
     2g: "npm:^0.4.3"
     "@expo/code-signing-certificates": "npm:^0.0.6"
@@ -1164,7 +1164,7 @@ __metadata:
       optional: true
   bin:
     expo-internal: bin/cli.js
-  checksum: 10c0/61d89ed37ec9c8c6f4ec10563a55b8758f12c840a294bc0cae47865a69a3eb28c1df96f6b9feefa6adef623474c57b87b91afffa3f3b8a80e67930a4f4a01768
+  checksum: 10c0/4ce67c98d531e22a021b04d48aeb50baf073fd02f4b095e103f297dc1018bbbdd6fc7c45eb4b25d3f19dafc719beb8cb5b483038a7150ab5ec04cf5198c9e794
   languageName: node
   linkType: hard
 
@@ -1429,9 +1429,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@expo/metro-runtime@npm:^58.0.5":
-  version: 58.0.5
-  resolution: "@expo/metro-runtime@npm:58.0.5"
+"@expo/metro-runtime@npm:^58.0.6":
+  version: 58.0.6
+  resolution: "@expo/metro-runtime@npm:58.0.6"
   dependencies:
     "@expo/log-box": "npm:^58.0.4"
     anser: "npm:^1.4.9"
@@ -1447,7 +1447,7 @@ __metadata:
   peerDependenciesMeta:
     react-dom:
       optional: true
-  checksum: 10c0/a02091854547534da131b763f1b723247b7251e2026d1a35fcc1f731fadf6a8f37907790655355cbd66a616071b0ae879eab9bb53e78abf4863d7c60e1cc7a2a
+  checksum: 10c0/dbaa050ff6bf1e462532ac64ca8317134d871a55775bb99fccf0ee4b825f880b2501b8f730d9fc3112b183c2e185f4235b9b5ea045411966c51542aa551ea104
   languageName: node
   linkType: hard
 
@@ -2661,12 +2661,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/react-dom@npm:~19.2.3":
-  version: 19.2.7
-  resolution: "@types/react-dom@npm:19.2.7"
+"@types/react-dom@npm:~19.3.0":
+  version: 19.3.0
+  resolution: "@types/react-dom@npm:19.3.0"
   peerDependencies:
-    "@types/react": ^19.2.0
-  checksum: 10c0/226ab7e2b62114125e2276b3dcc3a25060177a673f8abadb7e31f395003de72ad68075c6edc5f51b02dd1e47443920ee030239c474c47fad075ded7410836909
+    "@types/react": ^19.3.0
+  checksum: 10c0/ce0066d28b62bc6afdd17ca84756b8fbe0f6ffc0c8b1e60739abc30e81510da2edbc1007e6ab3d974d30f5a8c25bb0f7de8d7ce09736c909fe84c0f9aed0b946
   languageName: node
   linkType: hard
 
@@ -2715,6 +2715,146 @@ __metadata:
   dependencies:
     "@types/yargs-parser": "npm:*"
   checksum: 10c0/609557826a6b85e73ccf587923f6429850d6dc70e420b455bab4601b670bfadf684b09ae288bccedab042c48ba65f1666133cf375814204b544009f57d6eef63
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-aix-ppc64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-aix-ppc64@npm:7.0.2"
+  conditions: os=aix & cpu=ppc64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-darwin-arm64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-darwin-arm64@npm:7.0.2"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-darwin-x64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-darwin-x64@npm:7.0.2"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-freebsd-arm64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-freebsd-arm64@npm:7.0.2"
+  conditions: os=freebsd & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-freebsd-x64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-freebsd-x64@npm:7.0.2"
+  conditions: os=freebsd & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-arm64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-arm64@npm:7.0.2"
+  conditions: os=linux & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-arm@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-arm@npm:7.0.2"
+  conditions: os=linux & cpu=arm
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-loong64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-loong64@npm:7.0.2"
+  conditions: os=linux & cpu=loong64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-mips64el@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-mips64el@npm:7.0.2"
+  conditions: os=linux & cpu=mips64el
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-ppc64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-ppc64@npm:7.0.2"
+  conditions: os=linux & cpu=ppc64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-riscv64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-riscv64@npm:7.0.2"
+  conditions: os=linux & cpu=riscv64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-s390x@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-s390x@npm:7.0.2"
+  conditions: os=linux & cpu=s390x
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-linux-x64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-linux-x64@npm:7.0.2"
+  conditions: os=linux & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-netbsd-arm64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-netbsd-arm64@npm:7.0.2"
+  conditions: os=netbsd & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-netbsd-x64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-netbsd-x64@npm:7.0.2"
+  conditions: os=netbsd & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-openbsd-arm64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-openbsd-arm64@npm:7.0.2"
+  conditions: os=openbsd & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-openbsd-x64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-openbsd-x64@npm:7.0.2"
+  conditions: os=openbsd & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-sunos-x64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-sunos-x64@npm:7.0.2"
+  conditions: os=sunos & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-win32-arm64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-win32-arm64@npm:7.0.2"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@typescript/typescript-win32-x64@npm:7.0.2":
+  version: 7.0.2
+  resolution: "@typescript/typescript-win32-x64@npm:7.0.2"
+  conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
@@ -4100,30 +4240,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-asset@npm:~58.0.5":
-  version: 58.0.5
-  resolution: "expo-asset@npm:58.0.5"
+"expo-asset@npm:~58.0.6":
+  version: 58.0.6
+  resolution: "expo-asset@npm:58.0.6"
   dependencies:
     "@expo/image-utils": "npm:^0.12.1"
-    expo-constants: "npm:~58.0.5"
+    expo-constants: "npm:~58.0.6"
   peerDependencies:
     expo: "*"
     react: "*"
     react-native: "*"
-  checksum: 10c0/c87765c64a7443b36e134f5129620a13a1fb66641dfdb2442feed7d3b5e7ce2131db808df9bdf7cb694c5be6e716126b1b936dd30b13ee235493688e341a6a72
+  checksum: 10c0/8011505267f810d5b04b840bee247fa3e5adc4a87e167bf9a6b1f730182b7f20c8b5e643ba56692ed00077e6b28c11b145b6b4c30df8e85b11d33c6543680cf9
   languageName: node
   linkType: hard
 
-"expo-constants@npm:~58.0.5":
-  version: 58.0.5
-  resolution: "expo-constants@npm:58.0.5"
+"expo-constants@npm:~58.0.6":
+  version: 58.0.6
+  resolution: "expo-constants@npm:58.0.6"
   dependencies:
     "@expo/env": "npm:~2.5.0"
     "@expo/require-utils": "npm:^58.0.1"
   peerDependencies:
     expo: "*"
     react-native: "*"
-  checksum: 10c0/de27a12852d90459d1e72558427af88d098ca7e443e0fc7dcf4a1b0a42511f6399b69a0c06ab173a94cbd56adae888fe096b411dc417d50a197a8cc430d61649
+  checksum: 10c0/074b914c9409e7625bc38b8a65e50a29c58ba09d34a7fb40d3ab13bb5f3f4e5a1c3464af546f7a01f8b9a0538bd51e1daf255ee317d99d68c543b868fc2be912
   languageName: node
   linkType: hard
 
@@ -4169,17 +4309,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-linking@npm:~58.0.5":
-  version: 58.0.5
-  resolution: "expo-linking@npm:58.0.5"
+"expo-linking@npm:~58.0.6":
+  version: 58.0.6
+  resolution: "expo-linking@npm:58.0.6"
   dependencies:
-    expo-constants: "npm:~58.0.5"
+    expo-constants: "npm:~58.0.6"
     invariant: "npm:^2.2.4"
   peerDependencies:
     expo: "*"
     react: "*"
     react-native: "*"
-  checksum: 10c0/204763cbe04b9c3e3ad4a02f3325948bc8b5e654428ff4cd2eb8cb1efd001a82cff4094e98a42d9122d5f60e70240a250224c097921cb3bafd92e49929a7a4db
+  checksum: 10c0/3b1388dd5260e77869f4fa70e3215a9b066a222863f7b0859a854d09049971e90e1280b5c04531a27a65435736c6f8cbcd56013848eb09ffc0423051ea5c2f3d
   languageName: node
   linkType: hard
 
@@ -4197,9 +4337,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-modules-core@npm:~58.0.5":
-  version: 58.0.5
-  resolution: "expo-modules-core@npm:58.0.5"
+"expo-modules-core@npm:~58.0.6":
+  version: 58.0.6
+  resolution: "expo-modules-core@npm:58.0.6"
   dependencies:
     "@expo/expo-modules-macros-plugin": "npm:0.12.0"
     expo-modules-jsi: "npm:~58.0.3"
@@ -4211,7 +4351,7 @@ __metadata:
   peerDependenciesMeta:
     react-native-worklets:
       optional: true
-  checksum: 10c0/1ac114352474560df2b3a331599f319e3fc6da6ef2b1e120f4635648862a0de2b21fd299c166eaff67d07505858fa9e222828a4f9aecc8345d38790c06418dff
+  checksum: 10c0/b3e59e5bfc70db398fdc1a4aed17ed7950dfe319526597f7b31c63f93d273e5621ee547e6aab6482ad037325019e03c51c551807b7b74fc94544c4e4a63a406e
   languageName: node
   linkType: hard
 
@@ -4224,12 +4364,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-router@npm:~58.0.6":
-  version: 58.0.6
-  resolution: "expo-router@npm:58.0.6"
+"expo-router@npm:~58.0.7":
+  version: 58.0.7
+  resolution: "expo-router@npm:58.0.7"
   dependencies:
     "@expo/log-box": "npm:^58.0.4"
-    "@expo/metro-runtime": "npm:^58.0.5"
+    "@expo/metro-runtime": "npm:^58.0.6"
     "@expo/schema-utils": "npm:^58.0.0"
     "@radix-ui/react-slot": "npm:^1.2.0"
     "@radix-ui/react-tabs": "npm:^1.1.12"
@@ -4249,12 +4389,12 @@ __metadata:
     standard-navigation: "npm:^0.0.5"
   peerDependencies:
     "@expo/log-box": ^58.0.4
-    "@expo/metro-runtime": ^58.0.5
-    "@expo/ui": ^58.0.5
+    "@expo/metro-runtime": ^58.0.6
+    "@expo/ui": ^58.0.6
     "@testing-library/react-native": ">= 13.2.0"
     expo: "*"
-    expo-constants: ^58.0.5
-    expo-linking: ^58.0.5
+    expo-constants: ^58.0.6
+    expo-linking: ^58.0.6
     expo-symbols: ^58.0.2
     react: "*"
     react-dom: "*"
@@ -4285,7 +4425,7 @@ __metadata:
       optional: true
     react-server-dom-webpack:
       optional: true
-  checksum: 10c0/86aff426e7bbf967649bcf5789cc4c0c3f45cf1d45b67fbf2bd0cb79be3f3142b29b94622104e22bc692e3ea4e7736f0b34c9b7cd7943bd6b4a12ee28b276113
+  checksum: 10c0/a6cd8a3fa7901736529d67de573e069dea405cf88a3e4dda6b71c770eb7ab587fd5036907c511457ee241b18f5bdd5274d4a3904830ecdfb54f3da8b289a4636
   languageName: node
   linkType: hard
 
@@ -4309,16 +4449,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-sqlite@npm:~58.0.4":
-  version: 58.0.4
-  resolution: "expo-sqlite@npm:58.0.4"
+"expo-sqlite@npm:~58.0.5":
+  version: 58.0.5
+  resolution: "expo-sqlite@npm:58.0.5"
   dependencies:
     await-lock: "npm:^2.2.2"
   peerDependencies:
     expo: "*"
     react: "*"
     react-native: "*"
-  checksum: 10c0/3306d75079b5c6ef34c0f3553e80fd8f022e995025bd92bc3c6d52c18d7a7fb627d9fa39435b1b1595b8410f9626c1869780f4b97c489b780139eea374c6ddb6
+  checksum: 10c0/d55f536b7f77954bfb62da428b361018bc57c8a20d37cc4e1b60f1ab142b1f4a69d3c4d5cb5d9bf228011f9cc46e3b43fc91c6893fe5f099bac069357c7bdfb3
   languageName: node
   linkType: hard
 
@@ -4350,12 +4490,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo@npm:~58.0.0-preview.5":
-  version: 58.0.0-preview.5
-  resolution: "expo@npm:58.0.0-preview.5"
+"expo@npm:~58.0.0-preview.6":
+  version: 58.0.0-preview.6
+  resolution: "expo@npm:58.0.0-preview.6"
   dependencies:
     "@babel/runtime": "npm:^7.20.0"
-    "@expo/cli": "npm:^58.0.5"
+    "@expo/cli": "npm:^58.0.6"
     "@expo/config": "npm:~58.0.0"
     "@expo/config-plugins": "npm:~58.0.2"
     "@expo/devtools": "npm:~58.0.1"
@@ -4368,13 +4508,13 @@ __metadata:
     "@expo/metro-config": "npm:~58.0.4"
     "@ungap/structured-clone": "npm:^1.3.0"
     babel-preset-expo: "npm:~58.0.4"
-    expo-asset: "npm:~58.0.5"
-    expo-constants: "npm:~58.0.5"
+    expo-asset: "npm:~58.0.6"
+    expo-constants: "npm:~58.0.6"
     expo-file-system: "npm:~58.0.1"
     expo-font: "npm:~58.0.2"
     expo-keep-awake: "npm:~58.0.1"
     expo-modules-autolinking: "npm:~58.0.3"
-    expo-modules-core: "npm:~58.0.5"
+    expo-modules-core: "npm:~58.0.6"
     pretty-format: "npm:^29.7.0"
     react-refresh: "npm:^0.14.2"
     whatwg-url-minimum: "npm:^0.2.0"
@@ -4401,7 +4541,7 @@ __metadata:
     expo: bin/cli
     expo-modules-autolinking: bin/autolinking
     fingerprint: bin/fingerprint
-  checksum: 10c0/01ebcb42ab138c363301d925dbddc4e2ea30f67471d53204f70d54a63dec43b4a14800552838c3472c19d3a6cb84a73a50544fa0936ecaefd3cc87550bd1a560
+  checksum: 10c0/500de42df2b671ca3ceb4d9aaa3a8805285a98783d6bc384de445e93b592b7bacbf926f68b31029cbe1edbe5774c873eb271777bb34a7cea01d3fc6462f6b100
   languageName: node
   linkType: hard
 
@@ -6385,15 +6525,15 @@ __metadata:
     "@testing-library/react-hooks": "npm:^8.0.0"
     "@types/jest": "npm:29.5.14"
     "@types/react": "npm:~19.3.0"
-    "@types/react-dom": "npm:~19.2.3"
+    "@types/react-dom": "npm:~19.3.0"
     "@types/react-test-renderer": "npm:^19"
-    expo: "npm:~58.0.0-preview.5"
-    expo-constants: "npm:~58.0.5"
+    expo: "npm:~58.0.0-preview.6"
+    expo-constants: "npm:~58.0.6"
     expo-font: "npm:~58.0.2"
-    expo-linking: "npm:~58.0.5"
-    expo-router: "npm:~58.0.6"
+    expo-linking: "npm:~58.0.6"
+    expo-router: "npm:~58.0.7"
     expo-splash-screen: "npm:~58.0.1"
-    expo-sqlite: "npm:~58.0.4"
+    expo-sqlite: "npm:~58.0.5"
     expo-status-bar: "npm:~58.0.1"
     expo-system-ui: "npm:~58.0.2"
     jest: "npm:~29.7.0"
@@ -6401,14 +6541,14 @@ __metadata:
     react: "npm:19.3.0"
     react-dom: "npm:19.3.0"
     react-native: "npm:0.88.0-rc.1"
-    react-native-gesture-handler: "npm:~3.2.1"
-    react-native-reanimated: "npm:4.6.0"
-    react-native-safe-area-context: "npm:~5.9.1"
+    react-native-gesture-handler: "npm:~3.3.0"
+    react-native-reanimated: "npm:4.7.0"
+    react-native-safe-area-context: "npm:~5.10.0"
     react-native-screens: "npm:~4.28.0"
     react-native-web: "npm:~0.21.0"
-    react-native-worklets: "npm:0.12.2"
+    react-native-worklets: "npm:0.13.0"
     react-test-renderer: "npm:19.3.0"
-    typescript: "npm:~6.0.3"
+    typescript: "npm:~7.0.2"
   languageName: unknown
   linkType: soft
 
@@ -7071,16 +7211,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-gesture-handler@npm:~3.2.1":
-  version: 3.2.1
-  resolution: "react-native-gesture-handler@npm:3.2.1"
+"react-native-gesture-handler@npm:~3.3.0":
+  version: 3.3.0
+  resolution: "react-native-gesture-handler@npm:3.3.0"
   dependencies:
     "@types/react-test-renderer": "npm:^19.1.0"
     invariant: "npm:^2.2.4"
   peerDependencies:
     react: "*"
     react-native: "*"
-  checksum: 10c0/e20537d1eafe35206494eae7885ef85e7cd85185b32ccaac3d25f3e87beafa007ac79556c0af8da245db1140f6b5df35d20509d7fa56301d730de5a8abb1b90f
+  checksum: 10c0/6a710722f59eca293e2ff30852cbaf8fb4705712068c9ebb4d1d9d737cda61f175b2b0b452c9fab322d9e14efae3b6d0ab7c884439125b7f5cfb57934f7a65f8
   languageName: node
   linkType: hard
 
@@ -7094,27 +7234,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-reanimated@npm:4.6.0":
-  version: 4.6.0
-  resolution: "react-native-reanimated@npm:4.6.0"
+"react-native-reanimated@npm:4.7.0":
+  version: 4.7.0
+  resolution: "react-native-reanimated@npm:4.7.0"
   dependencies:
     react-native-is-edge-to-edge: "npm:^1.3.1"
     semver: "npm:^7.7.3"
   peerDependencies:
     react: "*"
-    react-native: 0.83 - 0.87
-    react-native-worklets: 0.12.x
-  checksum: 10c0/947c9038b9c876a5e77364afd4b256327e05317537022b283aa76dc35af20b5cb4786989117fd1c3926c583595165703903e91ab3c204f90fdb6296022eff614
+    react-native: 0.86 - 0.88
+    react-native-worklets: 0.13.x
+  checksum: 10c0/29f98cc26aa75a4a512fd5d2416b3faa4495f1c465aeddcc1501ee91a6f9408be15061de04b0338dc07f6769fff118a3b0916d937db857b12511b2982f002115
   languageName: node
   linkType: hard
 
-"react-native-safe-area-context@npm:~5.9.1":
-  version: 5.9.1
-  resolution: "react-native-safe-area-context@npm:5.9.1"
+"react-native-safe-area-context@npm:~5.10.0":
+  version: 5.10.0
+  resolution: "react-native-safe-area-context@npm:5.10.0"
   peerDependencies:
     react: "*"
     react-native: "*"
-  checksum: 10c0/ffe37c7d6ebd412673cb3042b370b2d2551b3ba32d73c51246fbd4f01bb6374ff3ec2511c96a55f62e895758ae645ac372e876fd93c690889cfd27a6daa4e389
+  checksum: 10c0/92286decb41de294113f0470982dd72608d7eb2751646704b31fdc857411d5b3434c508ed590140550d492a515610e88ee25c0ac23fa27eeca03f51147400a12
   languageName: node
   linkType: hard
 
@@ -7163,9 +7303,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-worklets@npm:0.12.2":
-  version: 0.12.2
-  resolution: "react-native-worklets@npm:0.12.2"
+"react-native-worklets@npm:0.13.0":
+  version: 0.13.0
+  resolution: "react-native-worklets@npm:0.13.0"
   dependencies:
     "@babel/generator": "npm:^7.27.1"
     "@babel/plugin-transform-arrow-functions": "npm:^7.27.1"
@@ -7179,14 +7319,16 @@ __metadata:
     "@babel/preset-typescript": "npm:^7.28.5"
     "@babel/traverse": "npm:^7.27.1"
     "@babel/types": "npm:^7.27.1"
+    "@jridgewell/remapping": "npm:^2.3.5"
     convert-source-map: "npm:^2.0.0"
     semver: "npm:^7.7.4"
+    whatwg-fetch: "npm:^3.6.20"
   peerDependencies:
     "@babel/core": "*"
     "@react-native/metro-config": "*"
     react: "*"
-    react-native: 0.83 - 0.87
-  checksum: 10c0/d7e318b87e7c31018d198b54b4ff1325ce46ccbf8626cc09c3b66050ab99f59cf9932f82a03ac659ba2b0ed349495421103d1a7206e777e3a811d8c40ad3caaf
+    react-native: 0.86 - 0.88
+  checksum: 10c0/bf35b75c9711019a9de757317afab7bc5f4015bf3770c64f1bb13fc5c8edae86b145642b721f6b3c886e4b52c69ea38c6331a3e59de6a1db3386976a6aadfc79
   languageName: node
   linkType: hard
 
@@ -8048,23 +8190,145 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@npm:~6.0.3":
-  version: 6.0.3
-  resolution: "typescript@npm:6.0.3"
+"typescript@npm:~7.0.2":
+  version: 7.0.2
+  resolution: "typescript@npm:7.0.2"
+  dependencies:
+    "@typescript/typescript-aix-ppc64": "npm:7.0.2"
+    "@typescript/typescript-darwin-arm64": "npm:7.0.2"
+    "@typescript/typescript-darwin-x64": "npm:7.0.2"
+    "@typescript/typescript-freebsd-arm64": "npm:7.0.2"
+    "@typescript/typescript-freebsd-x64": "npm:7.0.2"
+    "@typescript/typescript-linux-arm": "npm:7.0.2"
+    "@typescript/typescript-linux-arm64": "npm:7.0.2"
+    "@typescript/typescript-linux-loong64": "npm:7.0.2"
+    "@typescript/typescript-linux-mips64el": "npm:7.0.2"
+    "@typescript/typescript-linux-ppc64": "npm:7.0.2"
+    "@typescript/typescript-linux-riscv64": "npm:7.0.2"
+    "@typescript/typescript-linux-s390x": "npm:7.0.2"
+    "@typescript/typescript-linux-x64": "npm:7.0.2"
+    "@typescript/typescript-netbsd-arm64": "npm:7.0.2"
+    "@typescript/typescript-netbsd-x64": "npm:7.0.2"
+    "@typescript/typescript-openbsd-arm64": "npm:7.0.2"
+    "@typescript/typescript-openbsd-x64": "npm:7.0.2"
+    "@typescript/typescript-sunos-x64": "npm:7.0.2"
+    "@typescript/typescript-win32-arm64": "npm:7.0.2"
+    "@typescript/typescript-win32-x64": "npm:7.0.2"
+  dependenciesMeta:
+    "@typescript/typescript-aix-ppc64":
+      optional: true
+    "@typescript/typescript-darwin-arm64":
+      optional: true
+    "@typescript/typescript-darwin-x64":
+      optional: true
+    "@typescript/typescript-freebsd-arm64":
+      optional: true
+    "@typescript/typescript-freebsd-x64":
+      optional: true
+    "@typescript/typescript-linux-arm":
+      optional: true
+    "@typescript/typescript-linux-arm64":
+      optional: true
+    "@typescript/typescript-linux-loong64":
+      optional: true
+    "@typescript/typescript-linux-mips64el":
+      optional: true
+    "@typescript/typescript-linux-ppc64":
+      optional: true
+    "@typescript/typescript-linux-riscv64":
+      optional: true
+    "@typescript/typescript-linux-s390x":
+      optional: true
+    "@typescript/typescript-linux-x64":
+      optional: true
+    "@typescript/typescript-netbsd-arm64":
+      optional: true
+    "@typescript/typescript-netbsd-x64":
+      optional: true
+    "@typescript/typescript-openbsd-arm64":
+      optional: true
+    "@typescript/typescript-openbsd-x64":
+      optional: true
+    "@typescript/typescript-sunos-x64":
+      optional: true
+    "@typescript/typescript-win32-arm64":
+      optional: true
+    "@typescript/typescript-win32-x64":
+      optional: true
   bin:
     tsc: bin/tsc
-    tsserver: bin/tsserver
-  checksum: 10c0/4a25ff5045b984370f48f196b3a0120779b1b343d40b9a68d114ea5e5fff099809b2bb777576991a63a5cd59cf7bffd96ff6fe10afcefbcb8bd6fb96ad4b6606
+  checksum: 10c0/3dcee51ec8c332492325bcdbf7df48b66668751f127e622ae7d41b6c716eb19184424a45e14f7750f50f340232388b69e6287859155f06a5ce2df76f12cb31cf
   languageName: node
   linkType: hard
 
-"typescript@patch:typescript@npm%3A~6.0.3#optional!builtin<compat/typescript>":
-  version: 6.0.3
-  resolution: "typescript@patch:typescript@npm%3A6.0.3#optional!builtin<compat/typescript>::version=6.0.3&hash=5786d5"
+"typescript@patch:typescript@npm%3A~7.0.2#optional!builtin<compat/typescript>":
+  version: 7.0.2
+  resolution: "typescript@patch:typescript@npm%3A7.0.2#optional!builtin<compat/typescript>::version=7.0.2&hash=3bafbf"
+  dependencies:
+    "@typescript/typescript-aix-ppc64": "npm:7.0.2"
+    "@typescript/typescript-darwin-arm64": "npm:7.0.2"
+    "@typescript/typescript-darwin-x64": "npm:7.0.2"
+    "@typescript/typescript-freebsd-arm64": "npm:7.0.2"
+    "@typescript/typescript-freebsd-x64": "npm:7.0.2"
+    "@typescript/typescript-linux-arm": "npm:7.0.2"
+    "@typescript/typescript-linux-arm64": "npm:7.0.2"
+    "@typescript/typescript-linux-loong64": "npm:7.0.2"
+    "@typescript/typescript-linux-mips64el": "npm:7.0.2"
+    "@typescript/typescript-linux-ppc64": "npm:7.0.2"
+    "@typescript/typescript-linux-riscv64": "npm:7.0.2"
+    "@typescript/typescript-linux-s390x": "npm:7.0.2"
+    "@typescript/typescript-linux-x64": "npm:7.0.2"
+    "@typescript/typescript-netbsd-arm64": "npm:7.0.2"
+    "@typescript/typescript-netbsd-x64": "npm:7.0.2"
+    "@typescript/typescript-openbsd-arm64": "npm:7.0.2"
+    "@typescript/typescript-openbsd-x64": "npm:7.0.2"
+    "@typescript/typescript-sunos-x64": "npm:7.0.2"
+    "@typescript/typescript-win32-arm64": "npm:7.0.2"
+    "@typescript/typescript-win32-x64": "npm:7.0.2"
+  dependenciesMeta:
+    "@typescript/typescript-aix-ppc64":
+      optional: true
+    "@typescript/typescript-darwin-arm64":
+      optional: true
+    "@typescript/typescript-darwin-x64":
+      optional: true
+    "@typescript/typescript-freebsd-arm64":
+      optional: true
+    "@typescript/typescript-freebsd-x64":
+      optional: true
+    "@typescript/typescript-linux-arm":
+      optional: true
+    "@typescript/typescript-linux-arm64":
+      optional: true
+    "@typescript/typescript-linux-loong64":
+      optional: true
+    "@typescript/typescript-linux-mips64el":
+      optional: true
+    "@typescript/typescript-linux-ppc64":
+      optional: true
+    "@typescript/typescript-linux-riscv64":
+      optional: true
+    "@typescript/typescript-linux-s390x":
+      optional: true
+    "@typescript/typescript-linux-x64":
+      optional: true
+    "@typescript/typescript-netbsd-arm64":
+      optional: true
+    "@typescript/typescript-netbsd-x64":
+      optional: true
+    "@typescript/typescript-openbsd-arm64":
+      optional: true
+    "@typescript/typescript-openbsd-x64":
+      optional: true
+    "@typescript/typescript-sunos-x64":
+      optional: true
+    "@typescript/typescript-win32-arm64":
+      optional: true
+    "@typescript/typescript-win32-x64":
+      optional: true
   bin:
     tsc: bin/tsc
-    tsserver: bin/tsserver
-  checksum: 10c0/2f25c74e65663c248fa1ade2b8459d9ce5372ff9dad07067310f132966ebec1d93f6c42f0baf77a6b6a7a91460463f708e6887013aaade22111037457c6b25df
+  checksum: 10c0/6b3cdc369cd829d46e00734ea64233ee84419c2825ad8fe408915adde77abced4b7a2401f7eed517d54a7a4f5d1c1869753cb99018df1c2159c761d9f33483a6
   languageName: node
   linkType: hard
 
@@ -8274,7 +8538,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"whatwg-fetch@npm:^3.0.0":
+"whatwg-fetch@npm:^3.0.0, whatwg-fetch@npm:^3.6.20":
   version: 3.6.20
   resolution: "whatwg-fetch@npm:3.6.20"
   checksum: 10c0/fa972dd14091321d38f36a4d062298df58c2248393ef9e8b154493c347c62e2756e25be29c16277396046d6eaa4b11bd174f34e6403fff6aaca9fb30fa1ff46d
