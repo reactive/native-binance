@@ -347,6 +347,41 @@ it('keeps a straddling week inside its months and off the week rest chart', () =
   expect(worst).toBeLessThanOrEqual(24.05);
 });
 
+function opacityAt(stops: { input: number[]; output: number[] }, progress: number): number {
+  const value = new Animated.Value(progress);
+  const opacity = value.interpolate({
+    inputRange: stops.input,
+    outputRange: stops.output,
+    extrapolate: 'clamp',
+  });
+  return (opacity as unknown as { __getValue(): number }).__getValue();
+}
+
+it('keeps the destination layer and readout visible when the spring rests', () => {
+  for (const [from, to] of [
+    ['1w', '1M'],
+    ['1M', '1w'],
+    ['1m', '1d'],
+  ] as const) {
+    const plan = assume(from, to);
+    const destination = plan.steps.find(step => step.interval === to)!;
+    expect(destination.qAlive1).toBe(1);
+    for (const progress of [progressAtQ(1), 1]) {
+      expect(opacityAt(destination.layer, progress)).toBe(1);
+      expect(opacityAt(destination.readout, progress)).toBe(1);
+    }
+  }
+  const zoomIn = assume('1M', '1w');
+  const origin = zoomIn.steps.find(step => step.interval === '1M')!;
+  expect(origin.qAlive1).toBe(1);
+  expect(opacityAt(origin.layer, 1)).toBe(1);
+  expect(opacityAt(origin.readout, 1)).toBe(1);
+  const dying = assume('1w', '1M').steps.find(step => step.interval === '1w')!;
+  expect(dying.qAlive1).toBeLessThan(1);
+  expect(opacityAt(dying.layer, 1)).toBe(0);
+  expect(opacityAt(dying.readout, 1)).toBe(0);
+});
+
 it('uses the sine table, the spring, and early-rest thresholds', () => {
   expect(travelDuration(4)).toBe(340);
   expect(travelDuration(1440)).toBe(900);

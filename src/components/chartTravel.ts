@@ -479,9 +479,12 @@ function othersOffScreen(base: CameraBase, built: Built[], from: StepId, to: Ste
 function windowStops(from: number, until: number): OpacityStops {
   const start = Math.min(from, until);
   const end = Math.max(from, until);
-  if (start <= 1e-9 && end >= 1 - 1e-6) return { input: [0, 1], output: [1, 1] };
-  if (start <= 1e-9) return { input: [0, end, end, 1], output: [1, 1, 0, 0] };
-  if (end >= 1 - 1e-6) return { input: [0, start, start, 1], output: [0, 0, 1, 1] };
+  // Callers pass progressAtQ. q = 1 is pEnd (~0.99), and the spring then snaps to 1.
+  const coversStart = start <= 1e-9;
+  const coversEnd = end >= progressAtQ(1) - 1e-6;
+  if (coversStart && coversEnd) return { input: [0, 1], output: [1, 1] };
+  if (coversStart) return { input: [0, end, end, 1], output: [1, 1, 0, 0] };
+  if (coversEnd) return { input: [0, start, start, 1], output: [0, 0, 1, 1] };
   return { input: [0, start, start, end, end, 1], output: [0, 0, 1, 1, 0, 0] };
 }
 
