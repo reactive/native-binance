@@ -115,19 +115,6 @@ function series(interval: CandleInterval, count = 60): Seed {
   };
 }
 
-const TRAVEL_PAIRS: ReadonlyArray<readonly [CandleInterval, CandleInterval]> = [
-  ['15m', '1h'],
-  ['1h', '15m'],
-  ['1h', '4h'],
-  ['4h', '1h'],
-  ['4h', '1d'],
-  ['1d', '4h'],
-  ['1d', '1w'],
-  ['1d', '1M'],
-  ['1w', '1d'],
-  ['1M', '1d'],
-];
-
 let tree: ReactTestRenderer | undefined;
 let restoreSocket = () => {};
 let streams: CandleStream[] = [];
@@ -539,15 +526,16 @@ it('fetches a cached list from the previous minute and skips a current one', asy
   mount({
     interval: '15m',
     seeds: [current15(), seed('1w', period(NOW, '1w') - 7 * 24 * 60 * MINUTE, 50), seed('4h', period(NOW, '4h'), 333)],
-    delay: interval => (interval === '1w' ? 200 : 0),
+    delay: interval => (interval === '1w' ? 800 : 0),
     resolve: params => [row(period(Date.now(), params.interval), 444)],
   });
   await settle();
 
   await press('interval-4h');
-  await advance(180);
+  await advance(520);
   expect(fetches).not.toContain('4h');
   expect(present('candle-series-4h')).toBe(true);
+  expect(present('candle-series-15m')).toBe(false);
   expect(textOf('candle-close')).toBe('333');
 
   await press('interval-1w');
@@ -698,19 +686,19 @@ it('fades in again when a series mounts a second time', async () => {
   mount({
     interval: '15m',
     seeds: [current15()],
-    delay: () => 0,
-    resolve: params => [row(period(Date.now(), params.interval), params.interval === '1h' ? 222 : 111)],
+    delay: interval => (interval === '4h' ? 2000 : 0),
+    resolve: params => [row(period(Date.now(), params.interval), 111)],
   });
   await settle();
-  await press('interval-1h');
-  await advance(270);
-  expect(present('candle-series-1h')).toBe(true);
+  await press('interval-4h');
+  await advance(90);
   expect(present('candle-series-15m')).toBe(false);
+  expect(present('candle-series-4h')).toBe(false);
 
   const timing = jest.spyOn(Animated, 'timing');
   await press('interval-15m');
   await advance(90);
-  const fadeIn = timing.mock.calls.filter((call) => {
+  const fadeIn = timing.mock.calls.filter(call => {
     const config = call[1] as { toValue?: number } | undefined;
     return config?.toValue === 1;
   });
@@ -764,30 +752,86 @@ async function showPair(from: CandleInterval, to: CandleInterval) {
   await settle();
 }
 
-it('travels day-month and the adjacent nesting pairs, and fades the rest', async () => {
-  const values = INTERVALS.map(item => item.value);
-  const traveled: string[] = [];
-  for (const from of values) {
-    for (const to of values) {
-      if (from === to) continue;
-      await showPair(from, to);
-      await press(`interval-${to}`);
-      await advance(1);
-      const moving = present(`candle-series-${from}`) && present(`candle-series-${to}`);
-      if (moving) {
-        traveled.push(`${from}->${to}`);
-        const outgoing = node(`candle-series-${from}`);
-        const incoming = node(`candle-series-${to}`);
-        expect(outgoing?.props.accessibilityElementsHidden).toBe(true);
-        expect(incoming?.props.accessibilityElementsHidden).toBe(true);
-        expect(incoming?.props.importantForAccessibility).toBe('no-hide-descendants');
-      } else {
-        expect(present(`candle-series-${to}`)).toBe(false);
-        expect(present(`candle-series-${from}`)).toBe(true);
-      }
-    }
+it('travels week-month and a far jump from the pills', async () => {
+  const faded: string[] = [];
+  for (const [from, to] of [
+    ['1w', '1M'],
+    ['1M', '1w'],
+    ['1m', '1d'],
+    ['1d', '1m'],
+  ] as const) {
+    await showPair(from, to);
+    await press(`interval-${to}`);
+    await advance(1);
+    const origin = node(`candle-series-${from}`);
+    const traveling =
+      origin != null &&
+      origin.props.accessible !== true &&
+      origin.props.accessibilityElementsHidden === true;
+    if (!traveling) faded.push(`${from}->${to}`);
   }
-  expect(traveled).toEqual(TRAVEL_PAIRS.map(([from, to]) => `${from}->${to}`));
+  expect(faded).toEqual([]);
+});
+
+it('reverses a far travel across handoffs without fetching the origin', async () => {
+  mount({
+    interval: '1m',
+    seeds: [series('1m'), series('1d')],
+    delay: () => 0,
+    resolve: params => series(params.interval).response,
+  });
+  await settle();
+  const before = fetches.length;
+  await press('interval-1d');
+  await advance(1);
+  expect(node('candle-series-1m')?.props.accessibilityElementsHidden).toBe(true);
+  await press('interval-1m');
+  expect(fetches.slice(before)).not.toContain('1m');
+  expect(selected('1m')).toBe(true);
+  expect(present('candle-series-1m')).toBe(true);
+  await advance(1000);
+  expect(present('candle-series-1m')).toBe(true);
+  expect(present('candle-series-1d')).toBe(false);
+  expect(fetches.slice(before)).not.toContain('1m');
+});
+
+it('fetches the other pills after a settle, neighbours first', async () => {
+  mount({
+    interval: '1h',
+    seeds: [series('1h')],
+    delay: () => 0,
+    resolve: params => series(params.interval).response,
+  });
+  await settle();
+  await advance(1);
+  const order = fetches.filter((interval, index) => fetches.indexOf(interval) === index);
+  expect(order).toEqual(['15m', '4h', '1m', '1d', '1w', '1M']);
+});
+
+it('keeps a left interval through GC while the chart stays mounted', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m'), series('1h')],
+    delay: () => 0,
+    resolve: params => series(params.interval).response,
+  });
+  await settle();
+  await press('interval-1h');
+  await advance(1000);
+  expect(present('candle-series-15m')).toBe(false);
+  const args = { symbol: SYMBOL, interval: '15m' as const };
+  const count = () => {
+    const state = controller?.getState();
+    if (!state || !controller) return 0;
+    const key = getCandles.key(args);
+    if (state.endpoints[key] === undefined) return 0;
+    const { data } = controller.getResponseMeta(getCandles, args, state);
+    return Array.isArray(data) ? data.length : 0;
+  };
+  expect(count()).toBeGreaterThan(0);
+  jest.setSystemTime(Date.now() + 3 * 60_000);
+  (controller?.gcPolicy as unknown as { runSweep(): void }).runSweep();
+  expect(count()).toBeGreaterThan(0);
 });
 
 it('travels when a press-in fetch resolves before touch-up', async () => {
