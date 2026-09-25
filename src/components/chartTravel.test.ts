@@ -423,6 +423,52 @@ it('keeps every pair inside the measured per-update budget', () => {
   }
 });
 
+it('updates only the candles on screen when stored lists are full', () => {
+  const stored: TravelInput['stored'] = {};
+  for (const interval of LADDER) {
+    if (interval === '5m') continue;
+    stored[interval] = { candles: build(interval) };
+  }
+  let worst = 0;
+  let worstPair = '';
+  for (const from of INTERVALS.map(item => item.value)) {
+    for (const to of INTERVALS.map(item => item.value)) {
+      if (from === to) continue;
+      const decided = planTravel(input(from, to, { stored }));
+      if (!decided.ok) {
+        if (decided.reason !== 'edge') throw new Error(`${from}->${to} ${decided.reason}`);
+        continue;
+      }
+      if (decided.plan.peakViews > worst) {
+        worst = decided.plan.peakViews;
+        worstPair = `${from}->${to}`;
+      }
+      expect(decided.plan.peakViews * UPDATE_US).toBeLessThanOrEqual(UPDATE_BUDGET_US);
+      const target = decided.plan.steps.find(step => step.interval === to);
+      expect(target?.qAlive1).toBe(1);
+      if (target?.perCandle) {
+        const shown = new Set(target.waves.flatMap(wave => [...wave.openTimes]));
+        expect(shown.size).toBe(target.candles.length);
+        expect(target.waves.some(wave => wave.until >= decided.plan.duration - 1)).toBe(true);
+      }
+    }
+  }
+  expect(worst).toBeLessThanOrEqual(128);
+  expect(worstPair).not.toBe('');
+  for (const [from, to] of [
+    ['1m', '1d'],
+    ['1d', '1m'],
+    ['1m', '1M'],
+    ['1M', '1m'],
+    ['1w', '1M'],
+    ['15m', '1h'],
+  ] as const) {
+    const decided = planTravel(input(from, to, { stored }));
+    if (!decided.ok) throw new Error(`${from}->${to} ${decided.reason}`);
+    expect(decided.plan.peakViews).toBeLessThanOrEqual(128);
+  }
+});
+
 it('lists every ladder step once', () => {
   expect(LADDER).toEqual(['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M']);
   expect(PAIRS).toHaveLength(21);

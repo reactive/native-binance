@@ -46,6 +46,12 @@ export type PriceDomain = { high: number; low: number };
 
 export type OpacityStops = { input: number[]; output: number[] };
 
+export type ShiftWave = {
+  at: number;
+  until: number;
+  openTimes: readonly number[];
+};
+
 export type StepPlan = {
   interval: StepId;
   candles: TravelCandle[];
@@ -70,6 +76,8 @@ export type StepPlan = {
   scaleY: number[];
   translateY: number[];
   shifts: ReadonlyMap<number, number[]>;
+  /** Per-candle translates, attached only while that candle is on screen. */
+  waves: ShiftWave[];
   layer: OpacityStops;
   coveredStops: OpacityStops | null;
   readout: OpacityStops;
@@ -511,14 +519,14 @@ function candleTranslate(base: CameraBase, built: Built, openTime: number, q: nu
   return screenCentre(base, built, openTime, q) - slotCentre;
 }
 
-function attachedPeak(steps: readonly StepPlan[], duration: number): number {
+function attachedPeak(steps: readonly StepPlan[]): number {
   const events: { t: number; delta: number }[] = [];
   for (const step of steps) {
-    if (!step.perCandle) continue;
-    const t1 = timeOfQ(step.qAlive1, duration);
-    if (t1 <= step.mountAt) continue;
-    events.push({ t: step.mountAt, delta: step.candles.length });
-    events.push({ t: t1, delta: -step.candles.length });
+    for (const wave of step.waves) {
+      if (wave.until <= wave.at || wave.openTimes.length === 0) continue;
+      events.push({ t: wave.at, delta: wave.openTimes.length });
+      events.push({ t: wave.until, delta: -wave.openTimes.length });
+    }
   }
   events.sort((a, b) => a.t - b.t || a.delta - b.delta);
   let current = 0;
@@ -528,6 +536,55 @@ function attachedPeak(steps: readonly StepPlan[], duration: number): number {
     if (current > peak) peak = current;
   }
   return peak;
+}
+
+const WAVE_LEAD_MS = 8;
+const WAVE_BUCKET_MS = 16;
+
+/** Candles share a timer when they enter within the same bucket. */
+function candleWaves(base: CameraBase, built: Built, alive: { q0: number; q1: number }, duration: number): ShiftWave[] {
+  const samples = 32;
+  const span = alive.q1 - alive.q0;
+  if (!(span > 0) || built.candles.length === 0) return [];
+  const times: number[] = [];
+  const drawn: boolean[][] = built.candles.map(() => []);
+  for (let i = 0; i <= samples; i += 1) {
+    const q = alive.q0 + (span * i) / samples;
+    times.push(timeOfQ(q, duration));
+    built.candles.forEach((candle, candleIndex) => {
+      drawn[candleIndex][i] = onScreen(base, built, candle.openTime, q);
+    });
+  }
+  const seen = new Map<number, { enter: number; leave: number }>();
+  built.candles.forEach((candle, candleIndex) => {
+    let first = -1;
+    let last = -1;
+    for (let i = 0; i <= samples; i += 1) {
+      if (!drawn[candleIndex][i]) continue;
+      if (first < 0) first = i;
+      last = i;
+    }
+    if (first < 0) return;
+    seen.set(candle.openTime, {
+      enter: times[first],
+      leave: times[last],
+    });
+  });
+  const groups = new Map<number, { at: number; until: number; openTimes: number[] }>();
+  for (const [openTime, window] of seen) {
+    const at = Math.max(0, window.enter - WAVE_LEAD_MS);
+    const until = Math.min(duration, window.leave + WAVE_LEAD_MS);
+    const key = Math.round(at / WAVE_BUCKET_MS) * 1000 + Math.round(until / WAVE_BUCKET_MS);
+    const group = groups.get(key);
+    if (group) {
+      group.at = Math.min(group.at, at);
+      group.until = Math.max(group.until, until);
+      group.openTimes.push(openTime);
+    } else {
+      groups.set(key, { at, until, openTimes: [openTime] });
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.at - b.at);
 }
 
 function layoutFor(
@@ -721,6 +778,7 @@ function assemble(
       scaleY,
       translateY,
       shifts,
+      waves: detail && index > 0 ? candleWaves(base, step, alive, duration) : [],
       layer,
       coveredStops,
       readout: windowStops(readoutFrom, pLast),
@@ -740,7 +798,7 @@ function assemble(
     slot,
     pEnd: springPosition(1),
     steps,
-    peakViews: attachedPeak(steps, duration),
+    peakViews: attachedPeak(steps),
   };
   return { ok: true, plan };
 }

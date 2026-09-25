@@ -39,9 +39,11 @@ import {
 } from '@/components/chartMotion';
 import {
   labelStops,
+  OMEGA_TAU,
   placeCandles,
   planTravel,
   rowFetchOrder,
+  springPosition,
   travelSpring,
   type PriceDomain,
   type StepId,
@@ -102,6 +104,7 @@ type PlotMotion = {
   translateY: Axis;
   layerOpacity?: Axis;
   shifts?: ReadonlyMap<number, Shift>;
+  perCandle?: boolean;
   covered?: ReadonlySet<number>;
   coveredOpacity?: Axis;
   labelOpacity?: Axis;
@@ -131,9 +134,11 @@ function opacityOf(progress: Animated.Value, stops: { input: number[]; output: n
   });
 }
 
-function attachShifts(graph: StepGraph, step: StepPlan) {
-  if (!step.perCandle || graph.shifts.size > 0) return;
-  for (const [openTime, output] of step.shifts) {
+function installWave(graph: StepGraph, step: StepPlan, openTimes: readonly number[]) {
+  for (const openTime of openTimes) {
+    if (graph.shifts.has(openTime)) continue;
+    const output = step.shifts.get(openTime);
+    if (!output) continue;
     const raw = graph.progress.interpolate({
       inputRange: step.input,
       outputRange: output,
@@ -141,6 +146,96 @@ function attachShifts(graph: StepGraph, step: StepPlan) {
     });
     graph.shifts.set(openTime, Animated.subtract(raw, Animated.modulo(raw, 1)));
   }
+}
+
+function clearWave(graph: StepGraph, openTimes: readonly number[]) {
+  for (const openTime of openTimes) graph.shifts.delete(openTime);
+}
+
+function schedule(
+  session: Session,
+  delay: number,
+  run: () => void,
+  bump: () => void,
+  current: (session: Session) => boolean,
+) {
+  if (delay <= 0) {
+    run();
+    return;
+  }
+  session.timers.push(
+    setTimeout(() => {
+      if (!current(session)) return;
+      run();
+      bump();
+    }, delay),
+  );
+}
+
+/** Forward uses wall time from the start. Reverse retimes each wave on the spring back to rest. */
+function bindWaves(
+  session: Session,
+  progress: number | null,
+  bump: () => void,
+  current: (session: Session) => boolean,
+) {
+  clearStaging(session);
+  let changed = false;
+  const touch = () => {
+    changed = true;
+  };
+  session.plan.steps.forEach((step, index) => {
+    const graph = session.steps[index];
+    if (progress == null) {
+      for (const wave of step.waves) {
+        schedule(session, wave.at, () => {
+          installWave(graph, step, wave.openTimes);
+          touch();
+        }, bump, current);
+        if (wave.until < session.plan.duration) {
+          schedule(session, wave.until, () => {
+            clearWave(graph, wave.openTimes);
+            touch();
+          }, bump, current);
+        }
+      }
+      return;
+    }
+    graph.shifts.clear();
+    touch();
+    const duration = session.plan.duration;
+    for (const wave of step.waves) {
+      const enter = springPosition(Math.min(1, wave.at / duration));
+      const leave = springPosition(Math.min(1, wave.until / duration));
+      const show = () => installWave(graph, step, wave.openTimes);
+      const hide = () => clearWave(graph, wave.openTimes);
+      if (progress < enter - 1e-4) continue;
+      if (progress <= leave + 1e-4) {
+        show();
+        schedule(session, rewindTime(progress, enter, duration), hide, bump, current);
+      } else {
+        const showAt = rewindTime(progress, leave, duration);
+        const hideAt = rewindTime(progress, enter, duration);
+        schedule(session, showAt, show, bump, current);
+        if (hideAt > showAt + 1) schedule(session, hideAt, hide, bump, current);
+      }
+    }
+  });
+  if (changed) bump();
+}
+
+function rewindTime(from: number, target: number, duration: number): number {
+  if (target >= from - 1e-4) return 0;
+  const omega = (OMEGA_TAU * 1000) / duration;
+  let lo = 0;
+  let hi = duration * 2;
+  for (let i = 0; i < 24; i += 1) {
+    const mid = (lo + hi) / 2;
+    const value = from * (1 + omega * mid) * Math.exp(-omega * mid);
+    if (value > target) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
@@ -160,11 +255,11 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
         translateY: progress.interpolate({ ...range, outputRange: step.translateY }),
         layerOpacity: opacityOf(progress, step.layer),
         shifts,
+        perCandle: step.perCandle,
         covered: step.split ? step.covered : undefined,
         coveredOpacity: step.coveredStops ? opacityOf(progress, step.coveredStops) : undefined,
       },
     };
-    if (step.mountAt <= 0) attachShifts(graph, step);
     return graph;
   });
   const labelClock = clock ?? steps[steps.length - 1].progress;
@@ -384,6 +479,7 @@ const CandlePlot = memo(function CandlePlot({
   insetTop,
   insetLeft,
   motion,
+  shiftGen,
   domain = null,
   showLabels = true,
 }: {
@@ -395,6 +491,7 @@ const CandlePlot = memo(function CandlePlot({
   insetTop: number;
   insetLeft: number;
   motion?: PlotMotion;
+  shiftGen?: number;
   domain?: PriceDomain | null;
   showLabels?: boolean;
 }): JSX.Element {
@@ -460,22 +557,14 @@ const CandlePlot = memo(function CandlePlot({
             const bodyH = Math.round(item.bodyHeight * ratio);
             const hollow =
               item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
+            // Wave installs mutate `motion.shifts`. `shiftGen` is what makes this memoized plot read them.
+            void shiftGen;
             const tx = motion?.shifts?.get(candle.openTime);
+            if (motion?.perCandle && !tx) return null;
             const covered = motion?.covered?.has(candle.openTime) === true;
-            return (
-              <Animated.View
-                key={candle.openTime}
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  left: slotLeft,
-                  top: 0,
-                  width: metrics.slot,
-                  height: height * ratio,
-                  opacity: covered ? motion?.coveredOpacity : 1,
-                  transform: tx ? [{ translateX: tx }] : undefined,
-                }}
-              >
+            const opacity = covered ? motion?.coveredOpacity : 1;
+            const body = (
+              <>
                 <DeviceMark
                   style={{
                     position: 'absolute',
@@ -509,7 +598,30 @@ const CandlePlot = memo(function CandlePlot({
                     }}
                   />
                 : null}
-              </Animated.View>
+              </>
+            );
+            const frame = {
+              position: 'absolute' as const,
+              left: slotLeft,
+              top: 0,
+              width: metrics.slot,
+              height: height * ratio,
+            };
+            if (tx || (covered && opacity != null && typeof opacity !== 'number')) {
+              return (
+                <Animated.View
+                  key={candle.openTime}
+                  pointerEvents="none"
+                  style={{ ...frame, opacity, transform: tx ? [{ translateX: tx }] : undefined }}
+                >
+                  {body}
+                </Animated.View>
+              );
+            }
+            return (
+              <View key={candle.openTime} pointerEvents="none" style={frame}>
+                {body}
+              </View>
             );
           })}
         </View>
@@ -788,6 +900,7 @@ function ChartFrame({
   ).current;
 
   const [shown, setShown] = useState<readonly number[]>([]);
+  const [shiftGen, setShiftGen] = useState(0);
   const [phase, setPhase] = useState<Phase>(() => {
     if (bootKind === 'fresh') return { kind: 'live', interval: requested };
     if (!readyAtStart) return { kind: 'empty' };
@@ -992,19 +1105,23 @@ function ChartFrame({
     setPhase({ kind: 'live', interval });
   }, []);
 
+  const bumpShifts = useCallback(() => {
+    setShiftGen(current => current + 1);
+  }, []);
+
   const stageSession = useCallback((session: Session) => {
     const initial = session.plan.steps.flatMap((step, index) => (step.mountAt <= 0 ? [index] : []));
     setShown(initial);
+    bindWaves(session, null, bumpShifts, item => sessionRef.current === item);
     session.plan.steps.forEach((step, index) => {
       if (step.mountAt <= 0) return;
       const timer = setTimeout(() => {
         if (sessionRef.current !== session) return;
-        attachShifts(session.steps[index], step);
         setShown(current => (current.includes(index) ? current : [...current, index]));
       }, step.mountAt);
       session.timers.push(timer);
     });
-  }, []);
+  }, [bumpShifts]);
 
   const onWarm = useCallback(
     (interval: CandleInterval) => {
@@ -1049,6 +1166,7 @@ function ChartFrame({
           stopClocks(session, value => {
             if (session.clock) session.clock.setValue(value);
             else for (const graph of session.steps) graph.progress.setValue(value);
+            bindWaves(session, value, bumpShifts, item => sessionRef.current === item);
             startClocks(session, 0, finished => {
               if (!finished || !session.reverse || phaseRef.current.kind !== 'travel') return;
               finishTravel(session.plan.from);
@@ -1229,7 +1347,7 @@ function ChartFrame({
         scheduleReveal(next);
       }
     },
-    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, stageSession, symbol],
+    [beginFetch, bumpShifts, canShow, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, stageSession, symbol],
   );
 
   const onLayout = useCallback(() => {
@@ -1358,6 +1476,7 @@ function ChartFrame({
                     insetTop={insetTop}
                     insetLeft={insetLeft}
                     motion={session.steps[index].motion}
+                    shiftGen={shiftGen}
                     domain={step.domain}
                     showLabels={step.interval === session.plan.to}
                   />
