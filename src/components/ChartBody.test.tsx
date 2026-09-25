@@ -42,12 +42,14 @@ import { DataProvider, getDefaultManagers, useController } from '@data-client/re
 import type { Controller } from '@data-client/react';
 import { mockInitialState, MockResolver } from '@data-client/test';
 import { useState } from 'react';
-import { AccessibilityInfo, Animated, Dimensions, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Animated, Dimensions, PixelRatio, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
-import ChartBody from '@/components/ChartBody';
+import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
+import { candleIndexAt } from '@/components/candleLayout';
 import { intervalMs, periodStart } from '@/components/chartMotion';
+import { formatCandleTime } from '@/components/formatMarket';
 import { getCandles, INTERVALS, upsertCandle, type CandleInterval } from '@/resources/Candle';
 import CandleStream from '@/resources/CandleStream';
 import { FakeSocket, installFakeSocket } from '@/resources/testSocket';
@@ -234,6 +236,7 @@ function Harness({
   resolve,
   delay,
   onRetry,
+  onScrub,
   show = true,
 }: {
   interval: CandleInterval;
@@ -241,6 +244,7 @@ function Harness({
   resolve: (params: { symbol: string; interval: CandleInterval }) => unknown;
   delay: (interval: CandleInterval) => number;
   onRetry: () => void;
+  onScrub?: (quote: ScrubQuote | null) => void;
   show?: boolean;
 }) {
   const [current, setCurrent] = useState(interval);
@@ -273,6 +277,7 @@ function Harness({
               onInterval={setCurrent}
               onRetry={onRetry}
               retry={0}
+              onScrub={onScrub}
             />
           : null}
         </SafeAreaProvider>
@@ -983,4 +988,95 @@ it('keeps one kline socket and fades when the travel start is late', async () =>
   await advance(1);
   expect(present('candle-series-1h')).toBe(true);
   expect(present('candle-series-15m')).toBe(false);
+});
+
+function pointerAt(x: number, type = 'mouse') {
+  return {
+    nativeEvent: { offsetX: x, locationX: x, pointerType: type, buttons: type === 'mouse' ? 0 : 1 },
+  };
+}
+
+it('shows the candle under the pointer and returns to the latest close', async () => {
+  const quotes: Array<ScrubQuote | null> = [];
+  mount({
+    interval: '15m',
+    seeds: [series('15m')],
+    delay: () => 0,
+    resolve: params => series(params.interval).response,
+    onScrub: quote => {
+      quotes.push(quote);
+    },
+  });
+  await settle();
+  expect(textOf('candle-close')).toBe('104');
+  expect(present('scrub-price')).toBe(false);
+
+  const index = candleIndexAt(12, 60, 360, PixelRatio.get());
+  if (index == null) throw new Error('missing candle');
+  const close = String(100 + (index % 7) + 1);
+  const openTime = period(NOW, '15m') - (59 - index) * intervalMs('15m');
+  const plot = node('candles');
+
+  await act(async () => {
+    plot?.props.onPointerMove(pointerAt(12));
+  });
+  expect(textOf('scrub-price')).toBe(close);
+  expect(textOf('scrub-time')).toBe(`Up ${formatCandleTime(openTime, '15m')}`);
+  expect(textOf('candle-close')).toBe(close);
+  expect(node('scrub-price')?.props.accessibilityLabel).toBe(`Up ${close}`);
+  expect(present('scrub-line')).toBe(true);
+  expect(present('scrub-mark')).toBe(true);
+  expect(textOf('series-high')).toBe('110');
+  expect(textOf('series-low')).toBe('90');
+  keepSize();
+  expect(quotes.at(-1)).toMatchObject({ close: Number(close), open: 100, openTime, interval: '15m' });
+
+  await act(async () => {
+    plot?.props.onPointerUp(pointerAt(12));
+  });
+  expect(textOf('scrub-price')).toBe(close);
+
+  await act(async () => {
+    plot?.props.onPointerLeave({ nativeEvent: {} });
+  });
+  expect(present('scrub-price')).toBe(false);
+  expect(present('scrub-line')).toBe(false);
+  expect(textOf('candle-close')).toBe('104');
+  expect(quotes.at(-1)).toBeNull();
+
+  await act(async () => {
+    plot?.props.onTouchStart({ nativeEvent: { locationX: 12 } });
+  });
+  expect(textOf('candle-close')).toBe(close);
+  expect(plot?.props.onLongPress).toBeUndefined();
+  await act(async () => {
+    plot?.props.onTouchEnd();
+  });
+  expect(present('scrub-price')).toBe(false);
+  expect(textOf('candle-close')).toBe('104');
+  keepSize();
+});
+
+it('ignores the pointer while a travel is on screen', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m'), series('1h')],
+    delay: () => 0,
+    resolve: params => series(params.interval).response,
+  });
+  await settle();
+  await press('interval-1h');
+  await advance(1);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  const close = textOf('candle-close');
+  const plot = node('candles');
+  await act(async () => {
+    plot?.props.onPointerMove(pointerAt(12));
+    plot?.props.onTouchStart({ nativeEvent: { locationX: 12 } });
+  });
+  expect(present('scrub-price')).toBe(false);
+  expect(present('scrub-line')).toBe(false);
+  expect(textOf('candle-close')).toBe(close);
+  keepSize();
 });

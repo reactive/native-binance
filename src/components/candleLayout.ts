@@ -69,6 +69,27 @@ export function plotDeviceShift(
   return { x: frac(insetLeft + PLOT_MARGIN), y: frac(insetTop + ABOVE_PLOT) };
 }
 
+/**
+ * Candle under a plot-local CSS x. Right-aligned like `candleLayout`.
+ * The empty lead-in snaps to the first candle; past the last snaps to the last.
+ */
+export function candleIndexAt(
+  x: number,
+  count: number,
+  width: number,
+  ratio: number,
+): number | null {
+  if (!(count > 0) || !(width > 0) || !(ratio > 0)) return null;
+  if (!(x >= 0) || x > width) return null;
+  const { slot } = candleMetrics(width, ratio);
+  if (!(slot > 0)) return null;
+  const leading = width * ratio - count * slot;
+  const index = Math.floor((x * ratio - leading) / slot);
+  if (index < 0) return 0;
+  if (index >= count) return count - 1;
+  return index;
+}
+
 export function candleMetrics(width: number, ratio: number): CandleMetrics {
   const slot = Math.floor((width * ratio) / CANDLE_LIMIT);
   const gap = Math.round(ratio);
