@@ -2,14 +2,14 @@ import { Animated } from 'react-native';
 
 import { INTERVALS, type CandleInterval } from '@/resources/Candle';
 
-import { candleLayout } from './candleLayout';
-import { intervalMs, periodEnd, periodStart } from './chartMotion';
+import { periodEnd, periodStart } from './chartMotion';
 import {
   LADDER,
   MEAN_MONTH_DAYS,
   ladderSteps,
   markCentre,
   markRight,
+  periodLength,
   UPDATE_BUDGET_US,
   UPDATE_US,
   planTravel,
@@ -17,6 +17,7 @@ import {
   rowFetchOrder,
   springPosition,
   stepPeriodEnd,
+  stepPeriodStart,
   stepSigma,
   timeOfQ,
   travelDuration,
@@ -33,32 +34,12 @@ const RATIO = 3.75;
 const NOW = Date.parse('2026-09-23T15:04:30.000Z');
 const DAY = 24 * 60 * 60_000;
 
-const PAIRS: ReadonlyArray<readonly [CandleInterval, CandleInterval, readonly StepId[]]> = [
-  ['1m', '15m', ['1m', '5m', '15m']],
-  ['1m', '1h', ['1m', '5m', '15m', '1h']],
-  ['1m', '4h', ['1m', '5m', '15m', '1h', '4h']],
-  ['1m', '1d', ['1m', '5m', '15m', '1h', '4h', '1d']],
-  ['1m', '1w', ['1m', '5m', '15m', '1h', '4h', '1d', '1w']],
-  ['1m', '1M', ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M']],
-  ['15m', '1h', ['15m', '1h']],
-  ['15m', '4h', ['15m', '1h', '4h']],
-  ['15m', '1d', ['15m', '1h', '4h', '1d']],
-  ['15m', '1w', ['15m', '1h', '4h', '1d', '1w']],
-  ['15m', '1M', ['15m', '1h', '4h', '1d', '1w', '1M']],
-  ['1h', '4h', ['1h', '4h']],
-  ['1h', '1d', ['1h', '4h', '1d']],
-  ['1h', '1w', ['1h', '4h', '1d', '1w']],
-  ['1h', '1M', ['1h', '4h', '1d', '1w', '1M']],
-  ['4h', '1d', ['4h', '1d']],
-  ['4h', '1w', ['4h', '1d', '1w']],
-  ['4h', '1M', ['4h', '1d', '1w', '1M']],
-  ['1d', '1w', ['1d', '1w']],
-  ['1d', '1M', ['1d', '1w', '1M']],
-  ['1w', '1M', ['1w', '1M']],
-];
+const PAIRS: ReadonlyArray<readonly [CandleInterval, CandleInterval]> = INTERVALS.flatMap((from, index) =>
+  INTERVALS.slice(index + 1).map(to => [from.value, to.value] as const),
+);
 
 function build(interval: StepId, count = 60, now = NOW, wave = 1): TravelCandle[] {
-  const newest = interval === '5m' ? Math.floor(periodStart(now, '1m') / (5 * 60_000)) * 5 * 60_000 : periodStart(now, interval);
+  const newest = stepPeriodStart(now, interval);
   const opens: number[] = [];
   if (interval === '1M') {
     let cursor = newest;
@@ -69,9 +50,8 @@ function build(interval: StepId, count = 60, now = NOW, wave = 1): TravelCandle[
     }
     opens.reverse();
   } else {
-    const step = interval === '5m' ? 5 * 60_000 : intervalMs(interval);
-    const end = interval === '5m' ? newest : periodStart(now, interval);
-    for (let i = count - 1; i >= 0; i -= 1) opens.push(end - i * step);
+    const step = periodLength(interval);
+    for (let i = count - 1; i >= 0; i -= 1) opens.push(newest - i * step);
   }
   return opens.map((openTime, index) => {
     const close = 100 + wave * ((index % 5) + 1);
@@ -180,7 +160,7 @@ it('derives covered candles, partial 5m buckets, and a forming straddler', () =>
   const buckets = partial.steps[1].candles;
   expect(buckets.length).toBe(13);
   const firstBucket = buckets[0].openTime;
-  const inside = shortWindow.filter(candle => candle.openTime >= firstBucket && candle.openTime < firstBucket + 5 * 60_000);
+  const inside = shortWindow.filter(candle => candle.openTime >= firstBucket && candle.openTime < stepPeriodEnd(firstBucket, '5m'));
   expect(inside.length).toBeLessThan(5);
   expect(buckets[0].open).toBe(inside[0].open);
   expect(buckets[0].close).toBe(inside[inside.length - 1].close);
@@ -188,7 +168,7 @@ it('derives covered candles, partial 5m buckets, and a forming straddler', () =>
   const hour = assume('1m', '4h');
   const fifteen = hour.steps.find(step => step.interval === '15m');
   expect(fifteen).toBeDefined();
-  const full = fifteen!.candles.find(candle => !fifteen!.covered.has(candle.openTime) === false && candle.openTime !== fifteen!.straddler);
+  const full = fifteen!.candles.find(candle => fifteen!.covered.has(candle.openTime) && candle.openTime !== fifteen!.straddler);
   const group = minutes.filter(
     candle => full && candle.openTime >= full.openTime && candle.openTime < stepPeriodEnd(full.openTime, '15m'),
   );
@@ -254,24 +234,15 @@ it('matches rest frames, 40% handoffs, slot months, and non-overlapping candles'
         const interval = end === 0 ? plan.from : plan.to;
         const index = plan.steps.findIndex(step => step.interval === interval);
         const camera = plan.steps[index];
-        const sampleAt = (qq: number) => {
-          const p = progressAtQ(qq);
-          const range = camera.input;
-          if (p <= range[0]) return 0;
-          return range.length - 1;
-        };
         const at = end === 0 ? 0 : camera.input.length - 1;
         expect(camera.scaleX[at]).toBeCloseTo(1, 6);
         expect(camera.translateX[at]).toBeCloseTo(0, 6);
         expect(camera.scaleY[at]).toBeCloseTo(1, 6);
         expect(camera.translateY[at]).toBeCloseTo(0, 6);
-        const placed = candleLayout(camera.candles, { width: WIDTH, height: HEIGHT, ratio: RATIO });
-        placed.forEach((mark, markIndex) => {
-          const shift = camera.shifts.get(camera.candles[markIndex].openTime)?.[at] ?? 0;
+        for (const candle of camera.candles) {
+          const shift = camera.shifts.get(candle.openTime)?.[at] ?? 0;
           expect(shift).toBeCloseTo(0, 4);
-          const x = mark.x;
-          expect(x).toBeCloseTo(placed[markIndex].x, 6);
-        });
+        }
         for (const other of plan.steps) {
           if (other.interval === interval) continue;
           for (const candle of other.candles) {
@@ -281,10 +252,8 @@ it('matches rest frames, 40% handoffs, slot months, and non-overlapping candles'
             expect(markRight(plan, plan.steps.indexOf(other), candle.openTime, q)).toBeLessThan(1e-3);
           }
         }
-        expect(sampleAt(q)).toBeGreaterThanOrEqual(0);
       }
-      const fine = 0;
-      expect(stepSigma(plan, fine, plan.zoomOut ? plan.steps[0].qAlive1 : plan.steps[0].qAlive0)).toBeCloseTo(0.4, 5);
+      expect(stepSigma(plan, 0, plan.zoomOut ? plan.steps[0].qAlive1 : plan.steps[0].qAlive0)).toBeCloseTo(0.4, 5);
       for (let index = 1; index < plan.steps.length; index += 1) {
         const step = plan.steps[index];
         const centres = step.candles.map(candle => markCentre(plan, index, candle.openTime, 0.5));

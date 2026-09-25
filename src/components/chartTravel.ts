@@ -86,14 +86,7 @@ export type TravelPlan = {
   tStar: number;
   v0: number;
   v1: number;
-  anchor: number;
-  span0: number;
-  span1: number;
   slot: number;
-  ratio: number;
-  width: number;
-  height: number;
-  inner: number;
   pEnd: number;
   steps: StepPlan[];
   peakViews: number;
@@ -258,10 +251,10 @@ function deriveCovered(
   }
   const candles: TravelCandle[] = [];
   let straddler: number | null = null;
-  for (const open of [...groups.keys()].sort((a, b) => a - b)) {
+  for (const [open, group] of [...groups.entries()].sort((a, b) => a[0] - b[0])) {
     const end = stepPeriodEnd(open, interval);
     if (open < windowStart && end > windowStart) straddler = open;
-    candles.push(aggregate(open, groups.get(open)!));
+    candles.push(aggregate(open, group));
   }
   return { candles, straddler };
 }
@@ -276,7 +269,7 @@ function buildIntermediate(
   const windowStart = finer[0].openTime;
   const derived = deriveCovered(finer, interval);
   const derivedOnly = forceDerived || interval === '5m' || !usable(stored, derived.straddler, windowStart);
-  if (derivedOnly) {
+  if (derivedOnly || !stored) {
     return {
       candles: derived.candles,
       covered: new Set(derived.candles.map(candle => candle.openTime)),
@@ -285,9 +278,9 @@ function buildIntermediate(
     };
   }
   const storedByTime = new Map<number, TravelCandle>();
-  for (const candle of stored!.candles) storedByTime.set(candle.openTime, candle);
   const merged = new Map<number, TravelCandle>();
-  for (const candle of stored!.candles) {
+  for (const candle of stored.candles) {
+    storedByTime.set(candle.openTime, candle);
     if (stepPeriodEnd(candle.openTime, interval) <= windowStart) merged.set(candle.openTime, candle);
   }
   for (const candle of derived.candles) {
@@ -361,24 +354,27 @@ type CameraBase = {
   inner: number;
 };
 
-function velocity(base: CameraBase, q: number): number {
-  if (q <= 0) return base.v0;
-  if (q >= 1) return base.v1;
-  return Math.exp((1 - q) * base.logV0 + q * base.logV1);
+type Speed = { v0: number; v1: number; logV0: number; logV1: number };
+
+function velocity(speed: Speed, q: number): number {
+  if (q <= 0) return speed.v0;
+  if (q >= 1) return speed.v1;
+  return Math.exp((1 - q) * speed.logV0 + q * speed.logV1);
 }
 
-function sigmaOf(base: CameraBase, stepV: number, q: number): number {
-  return velocity(base, q) / stepV;
+function sigmaOf(speed: Speed, stepV: number, q: number): number {
+  return velocity(speed, q) / stepV;
 }
 
 function qAtSigma(base: CameraBase, stepV: number, sigma: number): number {
   return (Math.log(sigma * stepV) - base.logV0) / (base.logV1 - base.logV0);
 }
 
-function priceY(base: CameraBase, q: number, price: number): number {
-  const span = base.span0 ** (1 - q) * base.span1 ** q;
-  const yAnchor = (1 - q) * base.yAnchor0 + q * base.yAnchor1;
-  return yAnchor + (price - base.anchor) * (-base.inner / span);
+function yFrame(base: CameraBase, q: number): { span: number; yAnchor: number } {
+  return {
+    span: base.span0 ** (1 - q) * base.span1 ** q,
+    yAnchor: (1 - q) * base.yAnchor0 + q * base.yAnchor1,
+  };
 }
 
 function monthCentre(base: CameraBase, stepV: number, slotCentre: number, openTime: number, q: number): number {
@@ -400,26 +396,16 @@ function screenCentre(base: CameraBase, built: Built, openTime: number, q: numbe
   return base.xStar + (slotCentre - base.xStar) * sigma;
 }
 
-function bodyRight(base: CameraBase, built: Built, openTime: number, q: number): number {
+function bodyEdge(base: CameraBase, built: Built, openTime: number, q: number, side: -1 | 1): number {
   const slotCentre = built.centres.get(openTime) ?? 0;
   const stepV = base.slot / periodLength(built.interval);
   const sigma = sigmaOf(base, stepV, q);
+  const half = (side * base.slot) / 2;
   if (sigma <= 1) {
-    const restRight = slotCentre + base.slot / 2;
-    return base.xStar + (restRight - base.xStar) * sigma;
+    const rest = slotCentre + half;
+    return base.xStar + (rest - base.xStar) * sigma;
   }
-  return screenCentre(base, built, openTime, q) + base.slot / 2;
-}
-
-function bodyLeft(base: CameraBase, built: Built, openTime: number, q: number): number {
-  const slotCentre = built.centres.get(openTime) ?? 0;
-  const stepV = base.slot / periodLength(built.interval);
-  const sigma = sigmaOf(base, stepV, q);
-  if (sigma <= 1) {
-    const restLeft = slotCentre - base.slot / 2;
-    return base.xStar + (restLeft - base.xStar) * sigma;
-  }
-  return screenCentre(base, built, openTime, q) - base.slot / 2;
+  return screenCentre(base, built, openTime, q) + half;
 }
 
 function isDrawn(built: Built, openTime: number, sigma: number): boolean {
@@ -444,8 +430,8 @@ function aliveRange(base: CameraBase, stepV: number): { q0: number; q1: number }
 function onScreen(base: CameraBase, built: Built, openTime: number, q: number): boolean {
   const stepV = base.slot / periodLength(built.interval);
   if (!isDrawn(built, openTime, sigmaOf(base, stepV, q))) return false;
-  const right = bodyRight(base, built, openTime, q);
-  const left = bodyLeft(base, built, openTime, q);
+  const right = bodyEdge(base, built, openTime, q, 1);
+  const left = bodyEdge(base, built, openTime, q, -1);
   const plot = base.width * base.ratio;
   return right >= 0 && left <= plot;
 }
@@ -469,7 +455,7 @@ function othersOffScreen(base: CameraBase, built: Built[], from: StepId, to: Ste
       for (const candle of step.candles) {
         const stepV = base.slot / periodLength(step.interval);
         if (!isDrawn(step, candle.openTime, sigmaOf(base, stepV, q))) continue;
-        if (!(bodyRight(base, step, candle.openTime, q) < 1e-4)) return false;
+        if (!(bodyEdge(base, step, candle.openTime, q, 1) < 1e-4)) return false;
       }
     }
   }
@@ -511,8 +497,7 @@ function yScale(
   layout: LayoutMap,
   q: number,
 ): { scaleY: number; translateY: number } {
-  const span = base.span0 ** (1 - q) * base.span1 ** q;
-  const yAnchor = (1 - q) * base.yAnchor0 + q * base.yAnchor1;
+  const { span, yAnchor } = yFrame(base, q);
   const scaleY = -base.inner / span / layout.A;
   const beta = yAnchor - scaleY * layout.anchorY;
   return { scaleY, translateY: beta - (base.height / 2) * (1 - scaleY) };
@@ -526,7 +511,7 @@ function candleTranslate(base: CameraBase, built: Built, openTime: number, q: nu
   return screenCentre(base, built, openTime, q) - slotCentre;
 }
 
-function peakViews(steps: readonly StepPlan[], duration: number): number {
+function attachedPeak(steps: readonly StepPlan[], duration: number): number {
   const events: { t: number; delta: number }[] = [];
   for (const step of steps) {
     if (!step.perCandle) continue;
@@ -550,23 +535,13 @@ function layoutFor(
   interval: StepId,
   end: 'origin' | 'target' | 'mid',
 ): { layout: LayoutMap; domain: PriceDomain | null } {
-  if (end === 'origin') {
-    return {
-      layout: { A: -base.inner / base.span0, anchorY: base.yAnchor0 },
-      domain: null,
-    };
-  }
-  if (end === 'target') {
-    const y1 = priceY(base, 1, base.anchor);
-    return {
-      layout: { A: -base.inner / base.span1, anchorY: y1 },
-      domain: null,
-    };
+  if (end !== 'mid') {
+    const { span, yAnchor } = yFrame(base, end === 'origin' ? 0 : 1);
+    return { layout: { A: -base.inner / span, anchorY: yAnchor }, domain: null };
   }
   const stepV = base.slot / periodLength(interval);
   const qS = Math.min(1, Math.max(0, qAtSigma(base, stepV, 1)));
-  const span = base.span0 ** (1 - qS) * base.span1 ** qS;
-  const yAnchor = (1 - qS) * base.yAnchor0 + qS * base.yAnchor1;
+  const { span, yAnchor } = yFrame(base, qS);
   const A = -base.inner / span;
   const high = base.anchor + (PLOT_PAD - yAnchor) / A;
   const low = base.anchor + (base.height - PLOT_PAD - yAnchor) / A;
@@ -584,9 +559,6 @@ function assemble(
   const zoomOut = ids[0] === input.from;
   const finerEnd = zoomOut ? origin : target;
   const coarserEnd = zoomOut ? target : origin;
-  const lists = new Map<StepId, TravelCandle[]>();
-  lists.set(ids[0], finerEnd);
-  lists.set(ids[ids.length - 1], coarserEnd);
 
   const spanOrigin = seriesSpan(origin);
   const spanTarget = seriesSpan(target);
@@ -631,7 +603,7 @@ function assemble(
     let split: boolean;
     let derivedOnly = false;
     if (finest || coarsest) {
-      candles = lists.get(interval)!;
+      candles = coarsest ? coarserEnd : finerEnd;
       const finer = finest ? null : built[index - 1].candles;
       const classified = classify(candles, finer, interval);
       covered = classified.covered;
@@ -645,7 +617,6 @@ function assemble(
       straddler = made.straddler;
       split = true;
       derivedOnly = made.derivedOnly;
-      lists.set(interval, candles);
     }
     const end = interval === input.from ? 'origin' : interval === input.to ? 'target' : 'mid';
     const mapped = layoutFor(base, interval, end);
@@ -766,19 +737,11 @@ function assemble(
     tStar,
     v0,
     v1,
-    anchor,
-    span0: spanOrigin.span,
-    span1: spanTarget.span,
     slot,
-    ratio: input.ratio,
-    width: input.width,
-    height: input.height,
-    inner,
     pEnd: springPosition(1),
     steps,
-    peakViews: 0,
+    peakViews: attachedPeak(steps, duration),
   };
-  plan.peakViews = peakViews(steps, duration);
   return { ok: true, plan };
 }
 
@@ -813,8 +776,7 @@ export function planTravel(
 }
 
 export function labelStops(plan: TravelPlan): OpacityStops {
-  const at = plan.pEnd;
-  return { input: [0, at, at, 1], output: [0, 0, 1, 1] };
+  return windowStops(plan.pEnd, plan.pEnd);
 }
 
 function snap(value: number, ratio: number): number {
@@ -866,9 +828,11 @@ export function placeCandles(
 /** Analytic σ of a step. 1 at that step's own rest scale. */
 export function stepSigma(plan: TravelPlan, stepIndex: number, q: number): number {
   const step = plan.steps[stepIndex];
-  const stepV = plan.slot / periodLength(step.interval);
-  const speed = q <= 0 ? plan.v0 : q >= 1 ? plan.v1 : Math.exp((1 - q) * Math.log(plan.v0) + q * Math.log(plan.v1));
-  return speed / stepV;
+  return sigmaOf(
+    { v0: plan.v0, v1: plan.v1, logV0: Math.log(plan.v0), logV1: Math.log(plan.v1) },
+    plan.slot / periodLength(step.interval),
+    q,
+  );
 }
 
 export function markCentre(plan: TravelPlan, index: number, openTime: number, q: number): number {

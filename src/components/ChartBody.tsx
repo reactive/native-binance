@@ -109,17 +109,9 @@ type PlotMotion = {
 
 type StepGraph = {
   progress: Animated.Value;
-  scaleX: Axis;
-  translateX: Axis;
-  scaleY: Axis;
-  translateY: Axis;
-  layerOpacity: Axis;
-  coveredOpacity: Axis | null;
   readoutOpacity: Axis;
   shifts: Map<number, Shift>;
   motion: PlotMotion;
-  forwardThreshold: number;
-  reverseThreshold: number;
 };
 
 type Session = {
@@ -127,7 +119,6 @@ type Session = {
   origin: readonly Candle[];
   steps: StepGraph[];
   clock: Animated.Value | null;
-  labelOpacity: Axis;
   reverse: boolean;
   timers: ReturnType<typeof setTimeout>[];
 };
@@ -157,35 +148,21 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
   const steps = plan.steps.map(step => {
     const progress = clock ?? new Animated.Value(0);
     const range = { inputRange: step.input, extrapolate: 'clamp' as const };
-    const scaleX = progress.interpolate({ ...range, outputRange: step.scaleX });
-    const translateX = progress.interpolate({ ...range, outputRange: step.translateX });
-    const scaleY = progress.interpolate({ ...range, outputRange: step.scaleY });
-    const translateY = progress.interpolate({ ...range, outputRange: step.translateY });
-    const layerOpacity = opacityOf(progress, step.layer);
-    const coveredOpacity = step.coveredStops ? opacityOf(progress, step.coveredStops) : null;
     const shifts = new Map<number, Shift>();
     const graph: StepGraph = {
       progress,
-      scaleX,
-      translateX,
-      scaleY,
-      translateY,
-      layerOpacity,
-      coveredOpacity,
       readoutOpacity: opacityOf(progress, step.readout),
       shifts,
       motion: {
-        scaleX,
-        translateX,
-        scaleY,
-        translateY,
-        layerOpacity,
+        scaleX: progress.interpolate({ ...range, outputRange: step.scaleX }),
+        translateX: progress.interpolate({ ...range, outputRange: step.translateX }),
+        scaleY: progress.interpolate({ ...range, outputRange: step.scaleY }),
+        translateY: progress.interpolate({ ...range, outputRange: step.translateY }),
+        layerOpacity: opacityOf(progress, step.layer),
         shifts,
         covered: step.split ? step.covered : undefined,
-        coveredOpacity: coveredOpacity ?? undefined,
+        coveredOpacity: step.coveredStops ? opacityOf(progress, step.coveredStops) : undefined,
       },
-      forwardThreshold: step.forwardThreshold,
-      reverseThreshold: step.reverseThreshold,
     };
     if (step.mountAt <= 0) attachShifts(graph, step);
     return graph;
@@ -200,7 +177,6 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
     origin,
     steps,
     clock,
-    labelOpacity,
     reverse: false,
     timers: [],
   };
@@ -226,10 +202,6 @@ function runSpring(
   }
 }
 
-function motionFor(session: Session, index: number): PlotMotion {
-  return session.steps[index].motion;
-}
-
 function startClocks(session: Session, toValue: number, onEnd: (finished: boolean) => void) {
   const { plan } = session;
   if (session.clock) {
@@ -239,7 +211,8 @@ function startClocks(session: Session, toValue: number, onEnd: (finished: boolea
   }
   const driver = toValue === 0 ? 0 : plan.steps.length - 1;
   session.steps.forEach((graph, index) => {
-    const threshold = toValue === 0 ? graph.reverseThreshold : graph.forwardThreshold;
+    const step = plan.steps[index];
+    const threshold = toValue === 0 ? step.reverseThreshold : step.forwardThreshold;
     runSpring(graph.progress, toValue, plan.duration, threshold, finished => {
       if (index === driver) onEnd(finished);
     });
@@ -665,17 +638,10 @@ function TravelReadout({ symbol, session }: { symbol: string; session: Session }
                     key={step.interval}
                     accessibilityElementsHidden
                     importantForAccessibility="no-hide-descendants"
-                    style={
-                      index === 0 ?
-                        { opacity: session.steps[index].readoutOpacity }
-                      : {
-                          position: 'absolute',
-                          left: 0,
-                          right: 0,
-                          top: 0,
-                          opacity: session.steps[index].readoutOpacity,
-                        }
-                    }
+                    style={[
+                      index === 0 ? null : styles.readoutLayer,
+                      { opacity: session.steps[index].readoutOpacity },
+                    ]}
                   >
                     <Text
                       role="caption"
@@ -1391,7 +1357,7 @@ function ChartFrame({
                     height={height}
                     insetTop={insetTop}
                     insetLeft={insetLeft}
-                    motion={motionFor(session, index)}
+                    motion={session.steps[index].motion}
                     domain={step.domain}
                     showLabels={step.interval === session.plan.to}
                   />
@@ -1626,6 +1592,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'flex-start',
     justifyContent: 'center',
+  },
+  readoutLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
   },
   emptySeries: {
     position: 'absolute',
