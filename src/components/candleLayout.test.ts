@@ -1,4 +1,12 @@
-import { candleLayout, candleMetrics, plotDeviceShift, plotSize } from './candleLayout';
+import {
+  candleIndexAt,
+  candleLayout,
+  candleMetrics,
+  DIRECTION_WORD,
+  directionOf,
+  plotDeviceShift,
+  plotSize,
+} from './candleLayout';
 
 it('sizes the plot from the window and the safe insets', () => {
   expect(plotSize(384, 832, 47, 24)).toEqual({ width: 360, height: 521 });
@@ -73,4 +81,20 @@ it('keeps a flat series and a doji visible', () => {
     { width: 360, height: 100, ratio: 1 },
   );
   expect(mixed.map(item => item.direction)).toEqual(['up', 'down']);
+});
+
+it('names a candle direction', () => {
+  expect(DIRECTION_WORD[directionOf(1, 2)]).toBe('Up');
+  expect(DIRECTION_WORD[directionOf(2, 1)]).toBe('Down');
+  expect(DIRECTION_WORD[directionOf(2, 2)]).toBe('Flat');
+});
+
+it('maps a plot x onto the right-aligned candle', () => {
+  expect(candleIndexAt(0, 60, 360, 3.75)).toBe(0);
+  expect(candleIndexAt(66.933, 60, 360, 3.75)).toBe(10);
+  expect(candleIndexAt(360, 60, 360, 3.75)).toBe(59);
+  expect(candleIndexAt(0, 1, 360, 3.75)).toBe(0);
+  expect(candleIndexAt(-1, 60, 360, 3.75)).toBeNull();
+  expect(candleIndexAt(361, 60, 360, 3.75)).toBeNull();
+  expect(candleIndexAt(10, 0, 360, 3.75)).toBeNull();
 });

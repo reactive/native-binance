@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import ChartBody from '@/components/ChartBody';
+import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
+import { DIRECTION_WORD } from '@/components/candleLayout';
 import { InstrumentInfo } from '@/components/InstrumentInfo';
 import { LoadError } from '@/components/LoadError';
 import OrderBookView from '@/components/OrderBookView';
@@ -14,7 +15,13 @@ import { useDismissSearchOnBack } from '@/components/searchBack';
 import { SymbolSearch } from '@/components/SymbolSearch';
 import { TickerFeed } from '@/components/TickerFeed';
 import TradeTape from '@/components/TradeTape';
-import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/formatMarket';
+import {
+  decimalsOf,
+  formatCandleTime,
+  formatPercent,
+  formatPrice,
+  formatQuoteVolume,
+} from '@/components/formatMarket';
 import type { CandleInterval } from '@/resources/Candle';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
@@ -233,9 +240,11 @@ function StatusBadge({ status }: { status: string }): JSX.Element {
 function PriceStrip({
   symbol,
   streams,
+  scrub,
 }: {
   symbol: string;
   streams: readonly string[];
+  scrub: ScrubQuote | null;
 }): JSX.Element {
   useSuspense(getExchangeInfo);
   const ticker = useQuery(Ticker, { symbol });
@@ -244,7 +253,7 @@ function PriceStrip({
   if (!ticker) return <PriceStripFallback streams={streams} />;
 
   const places = instrument?.pricePlaces ?? decimalsOf(ticker.last);
-  const last = formatPrice(ticker.last, places);
+  const last = formatPrice(scrub ? scrub.close : ticker.last, places);
   const direction = ticker.percent > 0 ? 1 : ticker.percent < 0 ? -1 : 0;
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
@@ -262,6 +271,10 @@ function PriceStrip({
         </Text>
         {instrument && instrument.status !== '' && instrument.status !== 'TRADING' ?
           <StatusBadge status={instrument.status} />
+        : scrub ?
+          <Text role="label" tone="secondary" style={[TABULAR, styles.percent]} testID="symbol-scrub-time">
+            {DIRECTION_WORD[scrub.direction]} {formatCandleTime(scrub.openTime, scrub.interval)}
+          </Text>
         : <Text
             role="label"
             tone={direction === 0 ? 'secondary' : undefined}
@@ -390,6 +403,23 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   const [segment, setSegment] = useState<Segment>('Chart');
   const [chartInterval, setChartInterval] = useState<CandleInterval>('15m');
   const [chartHold, setChartHold] = useState<CandleInterval | null>(null);
+  const [scrub, setScrub] = useState<ScrubQuote | null>(null);
+  const onScrub = useCallback((quote: ScrubQuote | null) => {
+    setScrub(current => {
+      if (quote == null) return current == null ? current : null;
+      if (
+        current &&
+        current.open === quote.open &&
+        current.close === quote.close &&
+        current.openTime === quote.openTime &&
+        current.interval === quote.interval &&
+        current.direction === quote.direction
+      ) {
+        return current;
+      }
+      return quote;
+    });
+  }, []);
   const [retry, setRetry] = useState(0);
   const [committed, setCommitted] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -397,7 +427,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
     () => streamUrls(symbol, segment, chartInterval, chartHold),
     [symbol, segment, chartInterval, chartHold],
   );
-  const retryLoad = () => setRetry(count => count + 1);
+  const retryLoad = useCallback(() => setRetry(count => count + 1), []);
   const openSearch = useCallback(() => setSearching(true), []);
   const closeSearch = useCallback(() => setSearching(false), []);
   useDismissSearchOnBack(searching, closeSearch);
@@ -434,7 +464,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
             fallback={<PriceStripFallback streams={streams} />}
             errorComponent={() => <PriceStripFallback streams={streams} />}
           >
-            <PriceStrip symbol={symbol} streams={streams} />
+            <PriceStrip symbol={symbol} streams={streams} scrub={scrub} />
           </AsyncBoundary>
         : <PriceStripFallback streams={streams} />}
         <Segments segment={segment} onSelect={setSegment} />
@@ -477,6 +507,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
               onRetry={retryLoad}
               retry={retry}
               onHold={setChartHold}
+              onScrub={onScrub}
             />
           : segment === 'Info' ?
             <AsyncBoundary

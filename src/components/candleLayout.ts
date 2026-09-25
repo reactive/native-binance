@@ -12,6 +12,13 @@ const ABOVE_PLOT = CHROME + INTERVAL_ROW;
 
 export type CandleDirection = 'up' | 'down' | 'flat';
 
+/** Spoken direction. Color is never the only signal. */
+export const DIRECTION_WORD: Record<CandleDirection, 'Up' | 'Down' | 'Flat'> = {
+  up: 'Up',
+  down: 'Down',
+  flat: 'Flat',
+};
+
 export type CandlePlacement = {
   x: number;
   bodyTop: number;
@@ -69,6 +76,27 @@ export function plotDeviceShift(
   return { x: frac(insetLeft + PLOT_MARGIN), y: frac(insetTop + ABOVE_PLOT) };
 }
 
+/**
+ * Candle under a plot-local CSS x. Right-aligned like `candleLayout`.
+ * The empty lead-in snaps to the first candle; past the last snaps to the last.
+ */
+export function candleIndexAt(
+  x: number,
+  count: number,
+  width: number,
+  ratio: number,
+): number | null {
+  if (!(count > 0) || !(width > 0) || !(ratio > 0)) return null;
+  if (!(x >= 0) || x > width) return null;
+  const { slot } = candleMetrics(width, ratio);
+  if (!(slot > 0)) return null;
+  const leading = width * ratio - count * slot;
+  const index = Math.floor((x * ratio - leading) / slot);
+  if (index < 0) return 0;
+  if (index >= count) return count - 1;
+  return index;
+}
+
 export function candleMetrics(width: number, ratio: number): CandleMetrics {
   const slot = Math.floor((width * ratio) / CANDLE_LIMIT);
   const gap = Math.round(ratio);
@@ -86,7 +114,7 @@ function snap(value: number, ratio: number): number {
   return Math.round(value * ratio) / ratio;
 }
 
-function directionOf(open: number, close: number): CandleDirection {
+export function directionOf(open: number, close: number): CandleDirection {
   if (close > open) return 'up';
   if (close < open) return 'down';
   return 'flat';

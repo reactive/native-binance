@@ -7,6 +7,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -21,6 +22,8 @@ import {
   StyleSheet,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
+  type PointerEvent,
   type TextStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,8 +55,13 @@ import {
 import { LoadError } from '@/components/LoadError';
 import { Pill } from '@/components/Pill';
 import {
+  candleIndexAt,
   candleLayout,
   candleMetrics,
+  DIRECTION_WORD,
+  directionOf,
+  type CandleDirection,
+  type CandlePlacement,
   INTERVAL_ROW,
   PLOT_MARGIN,
   PLOT_PAD,
@@ -61,7 +69,7 @@ import {
   plotSize,
   READOUT,
 } from '@/components/candleLayout';
-import { decimalsOf, formatPrice } from '@/components/formatMarket';
+import { decimalsOf, formatCandleTime, formatPrice } from '@/components/formatMarket';
 import { Candle, getCandles, INTERVALS, type CandleInterval } from '@/resources/Candle';
 import { MarketSymbol } from '@/resources/Symbol';
 
@@ -375,6 +383,232 @@ function IntervalChips({
   );
 }
 
+export type ScrubQuote = {
+  open: number;
+  close: number;
+  openTime: number;
+  interval: CandleInterval;
+  direction: CandleDirection;
+};
+
+function pointerX(event: PointerEvent): number | null {
+  const x = event.nativeEvent.offsetX;
+  return Number.isFinite(x) ? x : null;
+}
+
+function closeY(item: { direction: CandleDirection; bodyTop: number; bodyHeight: number }): number {
+  return item.direction === 'down' ? item.bodyTop + item.bodyHeight : item.bodyTop;
+}
+
+const SCRUB_LABEL = 36;
+
+function ScrubGuides({
+  centre,
+  close,
+  height,
+  ratio,
+  metrics,
+  direction,
+  up,
+  down,
+  flat,
+  surface,
+}: {
+  centre: number;
+  close: number;
+  height: number;
+  ratio: number;
+  metrics: ReturnType<typeof candleMetrics>;
+  direction: CandleDirection;
+  up: string;
+  down: string;
+  flat: string;
+  surface: string;
+}): JSX.Element {
+  const lineW = metrics.wick;
+  const band = Math.round(PLOT_PAD * ratio);
+  const color = direction === 'up' ? up : direction === 'down' ? down : flat;
+  const markW = metrics.body;
+  const markH = direction === 'flat' ? lineW : metrics.body;
+  return (
+    <>
+      <DeviceMark
+        testID="scrub-line"
+        style={{
+          position: 'absolute',
+          left: centre - Math.floor(lineW / 2),
+          top: band,
+          width: lineW,
+          height: Math.max(lineW, Math.round(height * ratio) - band * 2),
+          backgroundColor: flat,
+        }}
+      />
+      <DeviceMark
+        testID="scrub-mark"
+        style={{
+          position: 'absolute',
+          left: centre - Math.floor(markW / 2),
+          top: close - Math.floor(markH / 2),
+          width: markW,
+          height: markH,
+          backgroundColor: direction === 'up' ? surface : color,
+          borderWidth: direction === 'up' ? lineW : 0,
+          borderColor: color,
+        }}
+      />
+    </>
+  );
+}
+
+function ScrubLabel({
+  centreX,
+  anchorY,
+  width,
+  height,
+  price,
+  when,
+  direction,
+  surface,
+}: {
+  centreX: number;
+  anchorY: number;
+  width: number;
+  height: number;
+  price: string;
+  when: string;
+  direction: CandleDirection;
+  surface: string;
+}): JSX.Element {
+  const word = DIRECTION_WORD[direction];
+  const gap = 8;
+  const onRight = centreX <= width / 2;
+  const minTop = PLOT_PAD;
+  const maxTop = Math.max(minTop, height - PLOT_PAD - SCRUB_LABEL);
+  const top = Math.min(Math.max(anchorY - SCRUB_LABEL / 2, minTop), maxTop);
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.scrubLabel,
+        {
+          top,
+          backgroundColor: surface,
+          maxWidth: Math.max(48, onRight ? width - centreX - gap : centreX - gap),
+          alignItems: onRight ? 'flex-start' : 'flex-end',
+          left: onRight ? centreX + gap : undefined,
+          right: onRight ? undefined : width - centreX + gap,
+        },
+      ]}
+    >
+      <Text
+        role="caption"
+        numberOfLines={1}
+        style={TABULAR}
+        testID="scrub-price"
+        accessibilityLabel={`${word} ${price}`}
+      >
+        {price}
+      </Text>
+      <Text role="caption" tone="secondary" numberOfLines={1} style={TABULAR} testID="scrub-time">
+        {word} {when}
+      </Text>
+    </View>
+  );
+}
+
+const CandleMarks = memo(function CandleMarks({
+  candles,
+  placed,
+  width,
+  height,
+  ratio,
+  motion,
+  up,
+  down,
+  flat,
+  surface,
+}: {
+  candles: readonly TravelCandle[];
+  placed: readonly CandlePlacement[];
+  width: number;
+  height: number;
+  ratio: number;
+  motion?: PlotMotion;
+  up: string;
+  down: string;
+  flat: string;
+  surface: string;
+}): JSX.Element {
+  const metrics = candleMetrics(width, ratio);
+  const wickOffset = (metrics.body - metrics.wick) / 2;
+  const minHollow = metrics.wick * 3;
+  return (
+    <>
+      {placed.map((item, index) => {
+        const candle = candles[index];
+        const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
+        const newest = index === placed.length - 1;
+        const bodyLeft = Math.round(item.x * ratio);
+        const slotLeft = bodyLeft - metrics.gap;
+        const bodyTop = Math.round(item.bodyTop * ratio);
+        const bodyH = Math.round(item.bodyHeight * ratio);
+        const hollow = item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
+        const tx = motion?.shifts?.get(candle.openTime);
+        const covered = motion?.covered?.has(candle.openTime) === true;
+        return (
+          <Animated.View
+            key={candle.openTime}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: slotLeft,
+              top: 0,
+              width: metrics.slot,
+              height: height * ratio,
+              opacity: covered ? motion?.coveredOpacity : 1,
+              transform: tx ? [{ translateX: tx }] : undefined,
+            }}
+          >
+            <DeviceMark
+              style={{
+                position: 'absolute',
+                left: metrics.gap + wickOffset,
+                top: Math.round(item.wickTop * ratio),
+                width: metrics.wick,
+                height: Math.round(item.wickHeight * ratio),
+                backgroundColor: color,
+              }}
+            />
+            <DeviceMark
+              testID={newest ? 'candle-last' : undefined}
+              style={{
+                position: 'absolute',
+                left: metrics.gap,
+                top: bodyTop,
+                width: metrics.body,
+                height: bodyH,
+                backgroundColor: color,
+              }}
+            />
+            {hollow ?
+              <DeviceMark
+                style={{
+                  position: 'absolute',
+                  left: metrics.gap + metrics.wick,
+                  top: bodyTop + metrics.wick,
+                  width: metrics.body - metrics.wick * 2,
+                  height: bodyH - metrics.wick * 2,
+                  backgroundColor: surface,
+                }}
+              />
+            : null}
+          </Animated.View>
+        );
+      })}
+    </>
+  );
+});
+
 const CandlePlot = memo(function CandlePlot({
   symbol,
   interval,
@@ -386,6 +620,7 @@ const CandlePlot = memo(function CandlePlot({
   motion,
   domain = null,
   showLabels = true,
+  scrubIndex = null,
 }: {
   symbol: string;
   interval: StepId;
@@ -397,12 +632,19 @@ const CandlePlot = memo(function CandlePlot({
   motion?: PlotMotion;
   domain?: PriceDomain | null;
   showLabels?: boolean;
+  scrubIndex?: number | null;
 }): JSX.Element {
   const instrument = useQuery(MarketSymbol, { symbol });
   const { theme } = useTheme();
   const ratio = PixelRatio.get();
-  const metrics = candleMetrics(width, ratio);
-  const placed = domain ? placeCandles(candles, { width, height, ratio }, domain) : candleLayout(candles, { width, height, ratio });
+  const metrics = useMemo(() => candleMetrics(width, ratio), [width, ratio]);
+  const placed = useMemo(
+    () =>
+      domain ?
+        placeCandles(candles, { width, height, ratio }, domain)
+      : candleLayout(candles, { width, height, ratio }),
+    [candles, domain, height, ratio, width],
+  );
   const shift = plotDeviceShift(insetTop, insetLeft, ratio);
   const last = candles[candles.length - 1];
   const places = instrument?.pricePlaces ?? decimalsOf(last.close);
@@ -410,8 +652,6 @@ const CandlePlot = memo(function CandlePlot({
   const down = theme.semantic.color.tones.danger.solid;
   const flat = theme.semantic.color.textSecondary;
   const surface = theme.semantic.color.surface;
-  const wickOffset = (metrics.body - metrics.wick) / 2;
-  const minHollow = metrics.wick * 3;
   let seriesHigh = candles[0].high;
   let seriesLow = candles[0].low;
   for (const candle of candles) {
@@ -419,6 +659,8 @@ const CandlePlot = memo(function CandlePlot({
     if (candle.low < seriesLow) seriesLow = candle.low;
   }
   const labelStyle = motion?.labelOpacity ? { opacity: motion.labelOpacity } : undefined;
+  const scrubbed = scrubIndex != null ? placed[scrubIndex] : undefined;
+  const scrubCandle = scrubbed && scrubIndex != null ? candles[scrubIndex] : undefined;
 
   return (
     <>
@@ -450,68 +692,32 @@ const CandlePlot = memo(function CandlePlot({
             transform: [{ scale: 1 / ratio }, { translateX: -shift.x }, { translateY: -shift.y }],
           }}
         >
-          {placed.map((item, index) => {
-            const candle = candles[index];
-            const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
-            const newest = index === placed.length - 1;
-            const bodyLeft = Math.round(item.x * ratio);
-            const slotLeft = bodyLeft - metrics.gap;
-            const bodyTop = Math.round(item.bodyTop * ratio);
-            const bodyH = Math.round(item.bodyHeight * ratio);
-            const hollow =
-              item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
-            const tx = motion?.shifts?.get(candle.openTime);
-            const covered = motion?.covered?.has(candle.openTime) === true;
-            return (
-              <Animated.View
-                key={candle.openTime}
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  left: slotLeft,
-                  top: 0,
-                  width: metrics.slot,
-                  height: height * ratio,
-                  opacity: covered ? motion?.coveredOpacity : 1,
-                  transform: tx ? [{ translateX: tx }] : undefined,
-                }}
-              >
-                <DeviceMark
-                  style={{
-                    position: 'absolute',
-                    left: metrics.gap + wickOffset,
-                    top: Math.round(item.wickTop * ratio),
-                    width: metrics.wick,
-                    height: Math.round(item.wickHeight * ratio),
-                    backgroundColor: color,
-                  }}
-                />
-                <DeviceMark
-                  testID={newest ? 'candle-last' : undefined}
-                  style={{
-                    position: 'absolute',
-                    left: metrics.gap,
-                    top: bodyTop,
-                    width: metrics.body,
-                    height: bodyH,
-                    backgroundColor: color,
-                  }}
-                />
-                {hollow ?
-                  <DeviceMark
-                    style={{
-                      position: 'absolute',
-                      left: metrics.gap + metrics.wick,
-                      top: bodyTop + metrics.wick,
-                      width: metrics.body - metrics.wick * 2,
-                      height: bodyH - metrics.wick * 2,
-                      backgroundColor: surface,
-                    }}
-                  />
-                : null}
-              </Animated.View>
-            );
-          })}
+          <CandleMarks
+            candles={candles}
+            placed={placed}
+            width={width}
+            height={height}
+            ratio={ratio}
+            motion={motion}
+            up={up}
+            down={down}
+            flat={flat}
+            surface={surface}
+          />
+          {scrubbed && scrubCandle ?
+            <ScrubGuides
+              centre={Math.round(scrubbed.x * ratio + metrics.body / 2)}
+              close={Math.round(closeY(scrubbed) * ratio)}
+              height={height}
+              ratio={ratio}
+              metrics={metrics}
+              direction={scrubbed.direction}
+              up={up}
+              down={down}
+              flat={flat}
+              surface={surface}
+            />
+          : null}
         </View>
       </Animated.View>
       {showLabels ?
@@ -531,6 +737,18 @@ const CandlePlot = memo(function CandlePlot({
             </Animated.View>
           </View>
         </>
+      : null}
+      {scrubbed && scrubCandle ?
+        <ScrubLabel
+          centreX={scrubbed.x + metrics.bodyCss / 2}
+          anchorY={closeY(scrubbed)}
+          width={width}
+          height={height}
+          price={formatPrice(scrubCandle.close, places)}
+          when={formatCandleTime(scrubCandle.openTime, interval)}
+          direction={scrubbed.direction}
+          surface={surface}
+        />
       : null}
     </>
   );
@@ -759,6 +977,7 @@ function ChartFrame({
   boot,
   onInterval,
   onHold,
+  onScrub,
   width,
   height,
   insetTop,
@@ -769,6 +988,7 @@ function ChartFrame({
   boot: 'fresh' | 'return' | 'switch';
   onInterval: (interval: CandleInterval) => void;
   onHold: (interval: CandleInterval | null) => void;
+  onScrub?: (quote: ScrubQuote | null) => void;
   width: number;
   height: number;
   insetTop: number;
@@ -796,6 +1016,7 @@ function ChartFrame({
   const [published, setPublished] = useState<Published | null>(null);
   const [caption, setCaption] = useState(false);
   const [pinned, setPinned] = useState<readonly Candle[] | null>(null);
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const shell = useRef(new Animated.Value(1)).current;
 
   const phaseRef = useRef(phase);
@@ -808,6 +1029,9 @@ function ChartFrame({
   controllerRef.current = controller;
   const onHoldRef = useRef(onHold);
   onHoldRef.current = onHold;
+  const onScrubRef = useRef(onScrub);
+  onScrubRef.current = onScrub;
+  const finger = useRef(false);
   const seriesRef = useRef<SeriesHandle>(null);
   const candlesRef = useRef<readonly Candle[] | null>(null);
   const frozenRef = useRef<readonly Candle[] | null>(null);
@@ -1307,6 +1531,103 @@ function ChartFrame({
     finishTravel(interval);
   }, [finishTravel, height, width]);
 
+  const follow = useCallback((x: number) => {
+    if (phaseRef.current.kind !== 'live') return;
+    const candles = candlesRef.current;
+    if (!candles || candles.length === 0) return;
+    const index = candleIndexAt(x, candles.length, widthRef.current, PixelRatio.get());
+    if (index == null) return;
+    setScrubIndex(current => (current === index ? current : index));
+  }, []);
+
+  const endScrub = useCallback(() => {
+    finger.current = false;
+    setScrubIndex(null);
+  }, []);
+
+  const onPointerDown = useCallback(
+    (event: PointerEvent) => {
+      const type = event.nativeEvent.pointerType;
+      if (type === 'touch' || type === 'pen') finger.current = true;
+      const x = pointerX(event);
+      if (x != null) follow(x);
+    },
+    [follow],
+  );
+
+  const onPointerMove = useCallback(
+    (event: PointerEvent) => {
+      const type = event.nativeEvent.pointerType;
+      if ((type === 'touch' || type === 'pen') && !finger.current) return;
+      const x = pointerX(event);
+      if (x != null) follow(x);
+    },
+    [follow],
+  );
+
+  const onPointerUp = useCallback(
+    (event: PointerEvent) => {
+      const type = event.nativeEvent.pointerType;
+      if (type !== 'touch' && type !== 'pen') return;
+      endScrub();
+    },
+    [endScrub],
+  );
+
+  const onTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      if (Platform.OS === 'web') return;
+      finger.current = true;
+      follow(event.nativeEvent.locationX);
+    },
+    [follow],
+  );
+
+  const onTouchMove = useCallback(
+    (event: GestureResponderEvent) => {
+      if (Platform.OS === 'web' || !finger.current) return;
+      follow(event.nativeEvent.locationX);
+    },
+    [follow],
+  );
+
+  useEffect(() => {
+    if (phase.kind === 'live') return;
+    finger.current = false;
+    setScrubIndex(null);
+  }, [phase.kind]);
+
+  const activeIndex =
+    phase.kind === 'live' &&
+    scrubIndex != null &&
+    published != null &&
+    scrubIndex < published.candles.length ?
+      scrubIndex
+    : null;
+  const scrubCandle = activeIndex != null && published ? published.candles[activeIndex] : null;
+  const reported = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const report = onScrubRef.current;
+    if (!report) return;
+    const quote =
+      scrubCandle && published && phase.kind === 'live' ?
+        {
+          open: scrubCandle.open,
+          close: scrubCandle.close,
+          openTime: scrubCandle.openTime,
+          interval: published.interval,
+          direction: directionOf(scrubCandle.open, scrubCandle.close),
+        }
+      : null;
+    const key = quote ? `${quote.interval}:${quote.openTime}:${quote.open}:${quote.close}` : '';
+    if (reported.current === key) return;
+    reported.current = key;
+    report(quote);
+  }, [phase.kind, published, scrubCandle]);
+
+  useEffect(() => () => onScrubRef.current?.(null), []);
+
   const mounted = mountedInterval(phase);
   const session = phase.kind === 'travel' || phase.kind === 'travel-out' ? phase.session : null;
   const subscribed = session ? session.plan.from : mounted;
@@ -1332,7 +1653,19 @@ function ChartFrame({
           onPublish={publish}
         />
       : null}
-      <View testID="candles" style={[styles.plot, { width, height }]}>
+      <View
+        testID="candles"
+        style={[styles.plot, { width, height }]}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={endScrub}
+        onPointerCancel={endScrub}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={endScrub}
+        onTouchCancel={endScrub}
+      >
         {session ?
           <Animated.View
             pointerEvents="none"
@@ -1374,6 +1707,7 @@ function ChartFrame({
             accessibilityElementsHidden={hidden}
             importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
             needsOffscreenAlphaCompositing
+            pointerEvents="none"
             onLayout={onLayout}
             style={{ width, height, overflow: 'hidden', opacity: published.opacity }}
           >
@@ -1385,6 +1719,7 @@ function ChartFrame({
               height={height}
               insetTop={insetTop}
               insetLeft={insetLeft}
+              scrubIndex={activeIndex}
             />
           </Animated.View>
         : null}
@@ -1406,7 +1741,11 @@ function ChartFrame({
         {session ?
           <TravelReadout symbol={symbol} session={session} />
         : showValues && published ?
-          <CandleValues symbol={symbol} candle={published.candles[published.candles.length - 1]} opacity={published.opacity} />
+          <CandleValues
+            symbol={symbol}
+            candle={scrubCandle ?? published.candles[published.candles.length - 1]}
+            opacity={published.opacity}
+          />
         : LABELS.map(label => (
             <View key={label} style={styles.readoutItem}>
               <Text role="caption" tone="secondary" numberOfLines={1}>
@@ -1472,13 +1811,14 @@ function RowHolders({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
-export default function ChartBody({
+function ChartBody({
   symbol,
   interval,
   onInterval,
   onRetry,
   retry,
   onHold,
+  onScrub,
 }: {
   symbol: string;
   interval: CandleInterval;
@@ -1486,6 +1826,7 @@ export default function ChartBody({
   onRetry: () => void;
   retry: number;
   onHold?: (interval: CandleInterval | null) => void;
+  onScrub?: (quote: ScrubQuote | null) => void;
 }): JSX.Element {
   const controller = useController();
   const { width, height } = useWindowDimensions();
@@ -1528,6 +1869,7 @@ export default function ChartBody({
           boot={boot}
           onInterval={onInterval}
           onHold={hold}
+          onScrub={onScrub}
           width={plot.width}
           height={plot.height}
           insetTop={insets.top}
@@ -1537,6 +1879,8 @@ export default function ChartBody({
     </View>
   );
 }
+
+export default memo(ChartBody);
 
 const styles = StyleSheet.create({
   body: {
@@ -1598,6 +1942,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
+  },
+  scrubLabel: {
+    position: 'absolute',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   emptySeries: {
     position: 'absolute',
