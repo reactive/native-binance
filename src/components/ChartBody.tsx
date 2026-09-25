@@ -7,6 +7,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -57,7 +58,10 @@ import {
   candleIndexAt,
   candleLayout,
   candleMetrics,
+  DIRECTION_WORD,
+  directionOf,
   type CandleDirection,
+  type CandlePlacement,
   INTERVAL_ROW,
   PLOT_MARGIN,
   PLOT_PAD,
@@ -65,7 +69,7 @@ import {
   plotSize,
   READOUT,
 } from '@/components/candleLayout';
-import { decimalsOf, directionWord, formatCandleTime, formatPrice } from '@/components/formatMarket';
+import { decimalsOf, formatCandleTime, formatPrice } from '@/components/formatMarket';
 import { Candle, getCandles, INTERVALS, type CandleInterval } from '@/resources/Candle';
 import { MarketSymbol } from '@/resources/Symbol';
 
@@ -384,15 +388,12 @@ export type ScrubQuote = {
   close: number;
   openTime: number;
   interval: CandleInterval;
+  direction: CandleDirection;
 };
 
 function pointerX(event: PointerEvent): number | null {
-  const native = event.nativeEvent as PointerEvent['nativeEvent'] & { locationX?: number };
-  const primary = Platform.OS === 'web' ? native.offsetX : native.locationX;
-  const fallback = Platform.OS === 'web' ? native.locationX : native.offsetX;
-  if (typeof primary === 'number' && Number.isFinite(primary)) return primary;
-  if (typeof fallback === 'number' && Number.isFinite(fallback)) return fallback;
-  return null;
+  const x = event.nativeEvent.offsetX;
+  return Number.isFinite(x) ? x : null;
 }
 
 function closeY(item: { direction: CandleDirection; bodyTop: number; bodyHeight: number }): number {
@@ -466,7 +467,7 @@ function ScrubLabel({
   height,
   price,
   when,
-  word,
+  direction,
   surface,
 }: {
   centreX: number;
@@ -475,9 +476,10 @@ function ScrubLabel({
   height: number;
   price: string;
   when: string;
-  word: 'Up' | 'Down' | 'Flat';
+  direction: CandleDirection;
   surface: string;
 }): JSX.Element {
+  const word = DIRECTION_WORD[direction];
   const gap = 8;
   const onRight = centreX <= width / 2;
   const minTop = PLOT_PAD;
@@ -514,6 +516,99 @@ function ScrubLabel({
   );
 }
 
+const CandleMarks = memo(function CandleMarks({
+  candles,
+  placed,
+  width,
+  height,
+  ratio,
+  motion,
+  up,
+  down,
+  flat,
+  surface,
+}: {
+  candles: readonly TravelCandle[];
+  placed: readonly CandlePlacement[];
+  width: number;
+  height: number;
+  ratio: number;
+  motion?: PlotMotion;
+  up: string;
+  down: string;
+  flat: string;
+  surface: string;
+}): JSX.Element {
+  const metrics = candleMetrics(width, ratio);
+  const wickOffset = (metrics.body - metrics.wick) / 2;
+  const minHollow = metrics.wick * 3;
+  return (
+    <>
+      {placed.map((item, index) => {
+        const candle = candles[index];
+        const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
+        const newest = index === placed.length - 1;
+        const bodyLeft = Math.round(item.x * ratio);
+        const slotLeft = bodyLeft - metrics.gap;
+        const bodyTop = Math.round(item.bodyTop * ratio);
+        const bodyH = Math.round(item.bodyHeight * ratio);
+        const hollow = item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
+        const tx = motion?.shifts?.get(candle.openTime);
+        const covered = motion?.covered?.has(candle.openTime) === true;
+        return (
+          <Animated.View
+            key={candle.openTime}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: slotLeft,
+              top: 0,
+              width: metrics.slot,
+              height: height * ratio,
+              opacity: covered ? motion?.coveredOpacity : 1,
+              transform: tx ? [{ translateX: tx }] : undefined,
+            }}
+          >
+            <DeviceMark
+              style={{
+                position: 'absolute',
+                left: metrics.gap + wickOffset,
+                top: Math.round(item.wickTop * ratio),
+                width: metrics.wick,
+                height: Math.round(item.wickHeight * ratio),
+                backgroundColor: color,
+              }}
+            />
+            <DeviceMark
+              testID={newest ? 'candle-last' : undefined}
+              style={{
+                position: 'absolute',
+                left: metrics.gap,
+                top: bodyTop,
+                width: metrics.body,
+                height: bodyH,
+                backgroundColor: color,
+              }}
+            />
+            {hollow ?
+              <DeviceMark
+                style={{
+                  position: 'absolute',
+                  left: metrics.gap + metrics.wick,
+                  top: bodyTop + metrics.wick,
+                  width: metrics.body - metrics.wick * 2,
+                  height: bodyH - metrics.wick * 2,
+                  backgroundColor: surface,
+                }}
+              />
+            : null}
+          </Animated.View>
+        );
+      })}
+    </>
+  );
+});
+
 const CandlePlot = memo(function CandlePlot({
   symbol,
   interval,
@@ -542,8 +637,14 @@ const CandlePlot = memo(function CandlePlot({
   const instrument = useQuery(MarketSymbol, { symbol });
   const { theme } = useTheme();
   const ratio = PixelRatio.get();
-  const metrics = candleMetrics(width, ratio);
-  const placed = domain ? placeCandles(candles, { width, height, ratio }, domain) : candleLayout(candles, { width, height, ratio });
+  const metrics = useMemo(() => candleMetrics(width, ratio), [width, ratio]);
+  const placed = useMemo(
+    () =>
+      domain ?
+        placeCandles(candles, { width, height, ratio }, domain)
+      : candleLayout(candles, { width, height, ratio }),
+    [candles, domain, height, ratio, width],
+  );
   const shift = plotDeviceShift(insetTop, insetLeft, ratio);
   const last = candles[candles.length - 1];
   const places = instrument?.pricePlaces ?? decimalsOf(last.close);
@@ -551,8 +652,6 @@ const CandlePlot = memo(function CandlePlot({
   const down = theme.semantic.color.tones.danger.solid;
   const flat = theme.semantic.color.textSecondary;
   const surface = theme.semantic.color.surface;
-  const wickOffset = (metrics.body - metrics.wick) / 2;
-  const minHollow = metrics.wick * 3;
   let seriesHigh = candles[0].high;
   let seriesLow = candles[0].low;
   for (const candle of candles) {
@@ -593,68 +692,18 @@ const CandlePlot = memo(function CandlePlot({
             transform: [{ scale: 1 / ratio }, { translateX: -shift.x }, { translateY: -shift.y }],
           }}
         >
-          {placed.map((item, index) => {
-            const candle = candles[index];
-            const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
-            const newest = index === placed.length - 1;
-            const bodyLeft = Math.round(item.x * ratio);
-            const slotLeft = bodyLeft - metrics.gap;
-            const bodyTop = Math.round(item.bodyTop * ratio);
-            const bodyH = Math.round(item.bodyHeight * ratio);
-            const hollow =
-              item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
-            const tx = motion?.shifts?.get(candle.openTime);
-            const covered = motion?.covered?.has(candle.openTime) === true;
-            return (
-              <Animated.View
-                key={candle.openTime}
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  left: slotLeft,
-                  top: 0,
-                  width: metrics.slot,
-                  height: height * ratio,
-                  opacity: covered ? motion?.coveredOpacity : 1,
-                  transform: tx ? [{ translateX: tx }] : undefined,
-                }}
-              >
-                <DeviceMark
-                  style={{
-                    position: 'absolute',
-                    left: metrics.gap + wickOffset,
-                    top: Math.round(item.wickTop * ratio),
-                    width: metrics.wick,
-                    height: Math.round(item.wickHeight * ratio),
-                    backgroundColor: color,
-                  }}
-                />
-                <DeviceMark
-                  testID={newest ? 'candle-last' : undefined}
-                  style={{
-                    position: 'absolute',
-                    left: metrics.gap,
-                    top: bodyTop,
-                    width: metrics.body,
-                    height: bodyH,
-                    backgroundColor: color,
-                  }}
-                />
-                {hollow ?
-                  <DeviceMark
-                    style={{
-                      position: 'absolute',
-                      left: metrics.gap + metrics.wick,
-                      top: bodyTop + metrics.wick,
-                      width: metrics.body - metrics.wick * 2,
-                      height: bodyH - metrics.wick * 2,
-                      backgroundColor: surface,
-                    }}
-                  />
-                : null}
-              </Animated.View>
-            );
-          })}
+          <CandleMarks
+            candles={candles}
+            placed={placed}
+            width={width}
+            height={height}
+            ratio={ratio}
+            motion={motion}
+            up={up}
+            down={down}
+            flat={flat}
+            surface={surface}
+          />
           {scrubbed && scrubCandle ?
             <ScrubGuides
               centre={Math.round(scrubbed.x * ratio + metrics.body / 2)}
@@ -697,7 +746,7 @@ const CandlePlot = memo(function CandlePlot({
           height={height}
           price={formatPrice(scrubCandle.close, places)}
           when={formatCandleTime(scrubCandle.openTime, interval)}
-          word={directionWord(scrubCandle.open, scrubCandle.close)}
+          direction={scrubbed.direction}
           surface={surface}
         />
       : null}
@@ -1568,6 +1617,7 @@ function ChartFrame({
           close: scrubCandle.close,
           openTime: scrubCandle.openTime,
           interval: published.interval,
+          direction: directionOf(scrubCandle.open, scrubCandle.close),
         }
       : null;
     const key = quote ? `${quote.interval}:${quote.openTime}:${quote.open}:${quote.close}` : '';
@@ -1761,7 +1811,7 @@ function RowHolders({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
-export default function ChartBody({
+function ChartBody({
   symbol,
   interval,
   onInterval,
@@ -1829,6 +1879,8 @@ export default function ChartBody({
     </View>
   );
 }
+
+export default memo(ChartBody);
 
 const styles = StyleSheet.create({
   body: {

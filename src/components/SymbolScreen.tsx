@@ -6,6 +6,7 @@ import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
+import { DIRECTION_WORD } from '@/components/candleLayout';
 import { InstrumentInfo } from '@/components/InstrumentInfo';
 import { LoadError } from '@/components/LoadError';
 import OrderBookView from '@/components/OrderBookView';
@@ -16,7 +17,6 @@ import { TickerFeed } from '@/components/TickerFeed';
 import TradeTape from '@/components/TradeTape';
 import {
   decimalsOf,
-  directionWord,
   formatCandleTime,
   formatPercent,
   formatPrice,
@@ -255,7 +255,6 @@ function PriceStrip({
   const places = instrument?.pricePlaces ?? decimalsOf(ticker.last);
   const last = formatPrice(scrub ? scrub.close : ticker.last, places);
   const direction = ticker.percent > 0 ? 1 : ticker.percent < 0 ? -1 : 0;
-  const scrubWord = scrub ? directionWord(scrub.open, scrub.close) : null;
   const up = theme.semantic.color.tones.success.solid;
   const down = theme.semantic.color.tones.danger.solid;
 
@@ -272,9 +271,9 @@ function PriceStrip({
         </Text>
         {instrument && instrument.status !== '' && instrument.status !== 'TRADING' ?
           <StatusBadge status={instrument.status} />
-        : scrub && scrubWord ?
+        : scrub ?
           <Text role="label" tone="secondary" style={[TABULAR, styles.percent]} testID="symbol-scrub-time">
-            {scrubWord} {formatCandleTime(scrub.openTime, scrub.interval)}
+            {DIRECTION_WORD[scrub.direction]} {formatCandleTime(scrub.openTime, scrub.interval)}
           </Text>
         : <Text
             role="label"
@@ -413,7 +412,8 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
         current.open === quote.open &&
         current.close === quote.close &&
         current.openTime === quote.openTime &&
-        current.interval === quote.interval
+        current.interval === quote.interval &&
+        current.direction === quote.direction
       ) {
         return current;
       }
@@ -427,7 +427,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
     () => streamUrls(symbol, segment, chartInterval, chartHold),
     [symbol, segment, chartInterval, chartHold],
   );
-  const retryLoad = () => setRetry(count => count + 1);
+  const retryLoad = useCallback(() => setRetry(count => count + 1), []);
   const openSearch = useCallback(() => setSearching(true), []);
   const closeSearch = useCallback(() => setSearching(false), []);
   useDismissSearchOnBack(searching, closeSearch);

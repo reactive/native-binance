@@ -12,6 +12,13 @@ const ABOVE_PLOT = CHROME + INTERVAL_ROW;
 
 export type CandleDirection = 'up' | 'down' | 'flat';
 
+/** Spoken direction. Color is never the only signal. */
+export const DIRECTION_WORD: Record<CandleDirection, 'Up' | 'Down' | 'Flat'> = {
+  up: 'Up',
+  down: 'Down',
+  flat: 'Flat',
+};
+
 export type CandlePlacement = {
   x: number;
   bodyTop: number;
@@ -107,7 +114,7 @@ function snap(value: number, ratio: number): number {
   return Math.round(value * ratio) / ratio;
 }
 
-function directionOf(open: number, close: number): CandleDirection {
+export function directionOf(open: number, close: number): CandleDirection {
   if (close > open) return 'up';
   if (close < open) return 'down';
   return 'flat';

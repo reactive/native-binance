@@ -1,6 +1,5 @@
 import {
   decimalsOf,
-  directionWord,
   formatCandleTime,
   formatClock,
   formatPrice,
@@ -43,10 +42,4 @@ it('formats a candle open in the phone zone', () => {
   expect(formatCandleTime(same, '1d', now)).toBe('23 Sep');
   expect(formatCandleTime(lastYear, '1w', now)).toBe('31 Dec 2025');
   expect(formatCandleTime(lastYear, '4h', now)).toBe('31 Dec 2025, 23:00');
-});
-
-it('names a candle direction with a word', () => {
-  expect(directionWord(1, 2)).toBe('Up');
-  expect(directionWord(2, 1)).toBe('Down');
-  expect(directionWord(2, 2)).toBe('Flat');
 });

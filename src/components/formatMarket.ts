@@ -1,3 +1,5 @@
+import { formatDay } from '@/components/formatDeadline';
+
 function groupThousands(integer: string): string {
   const sign = integer.startsWith('-') ? '-' : '';
   const digits = sign ? integer.slice(1) : integer;
@@ -47,8 +49,6 @@ export function formatClock(ms: number): string {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 /**
  * Candle open in the phone's zone. Intraday is `HH:mm`, with the day when it is not today.
  * A day, week, or month is `d MMM`, plus the year when it is not this year.
@@ -56,8 +56,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export function formatCandleTime(openTime: number, interval: string, now = Date.now()): string {
   const date = new Date(openTime);
   const current = new Date(now);
-  let day = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
-  if (date.getFullYear() !== current.getFullYear()) day = `${day} ${date.getFullYear()}`;
+  const day = formatDay(date, now);
   const dated = interval === '1d' || interval === '1w' || interval === '1M';
   if (dated) return day;
   const clock = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
@@ -66,13 +65,6 @@ export function formatCandleTime(openTime: number, interval: string, now = Date.
     date.getMonth() === current.getMonth() &&
     date.getDate() === current.getDate();
   return sameDay ? clock : `${day}, ${clock}`;
-}
-
-/** Close versus open, as a word. Color is never the only signal. */
-export function directionWord(open: number, close: number): 'Up' | 'Down' | 'Flat' {
-  if (close > open) return 'Up';
-  if (close < open) return 'Down';
-  return 'Flat';
 }
 
 export function formatPercent(fraction: number): string {
