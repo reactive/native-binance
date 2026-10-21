@@ -1,20 +1,14 @@
 #!/bin/bash
-# Cloud sessions: install this app and a sibling data-client checkout, build
-# data-client, and link its packages here (`yarn link:data-client`).
+# Installs this app and a sibling data-client checkout (cloning it if
+# missing), builds data-client, and links its packages here. Meant for a cloud
+# environment's setup script; locally, `yarn link:data-client` is enough.
 set -euo pipefail
 
-if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
-  exit 0
-fi
-
-app="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+app="$(cd "$(dirname "$0")/.." && pwd)"
 data_client="${DATA_CLIENT_DIR:-$app/../data-client}"
 
-# The egress proxy blocks repo.yarnpkg.com, so corepack fetches Yarn from npm.
-export COREPACK_NPM_REGISTRY=https://registry.npmjs.org
-if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-  echo "export COREPACK_NPM_REGISTRY=$COREPACK_NPM_REGISTRY" >> "$CLAUDE_ENV_FILE"
-fi
+# Some cloud proxies block repo.yarnpkg.com, so corepack fetches Yarn from npm.
+export COREPACK_NPM_REGISTRY="${COREPACK_NPM_REGISTRY:-https://registry.npmjs.org}"
 
 if [ ! -f "$data_client/package.json" ]; then
   git clone --depth 1 https://github.com/reactive/data-client.git "$data_client" >&2
