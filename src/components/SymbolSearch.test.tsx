@@ -1,3 +1,13 @@
+import { DataProvider } from '@data-client/react';
+import { mockInitialState } from '@data-client/test';
+import { BackHandler } from 'react-native';
+import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+
+import { SymbolSearch } from '@/components/SymbolSearch';
+import { getExchangeInfo } from '@/resources/Symbol';
+import { actWrite } from '@/resources/testSupport';
+import { getTickers, Ticker } from '@/resources/Ticker';
+
 jest.mock('@reactive/silk-native', () => {
   const React = require('react');
   const { Text: RNText, TextInput, View } = require('react-native');
@@ -33,16 +43,6 @@ jest.mock('@reactive/silk-native', () => {
     Skeleton: (props: object) => React.createElement(View, props),
   };
 });
-
-import { DataProvider } from '@data-client/react';
-import { mockInitialState } from '@data-client/test';
-import { BackHandler } from 'react-native';
-import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-
-import { SymbolSearch } from '@/components/SymbolSearch';
-import { getExchangeInfo } from '@/resources/Symbol';
-import { actWrite } from '@/resources/testSupport';
-import { getTickers, Ticker } from '@/resources/Ticker';
 
 const { act } = TestRenderer;
 

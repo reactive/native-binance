@@ -2,9 +2,9 @@ import { AsyncBoundary, ErrorBoundary, useController, useSuspense } from '@data-
 import { Heading, useTheme } from '@reactive/silk-native';
 import { Suspense, useEffect, useRef, useState, type JSX } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LoadError } from '@/components/LoadError';
+import { SafeScreen } from '@/components/SafeScreen';
 import { MarketSkeletonRow } from '@/components/MarketRow';
 import { MarketList, MarketsChrome } from '@/components/MarketsScreen';
 import { TickerFeed } from '@/components/TickerFeed';
@@ -184,11 +184,11 @@ export default function HomeScreen(): JSX.Element {
     };
   }, []);
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
+    <SafeScreen style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
       <AsyncBoundary fallback={<View style={styles.body} />} errorComponent={MarketsError}>
         {mounted ? <MarketsShell /> : null}
       </AsyncBoundary>
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 

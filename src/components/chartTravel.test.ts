@@ -34,7 +34,7 @@ const RATIO = 3.75;
 const NOW = Date.parse('2026-09-23T15:04:30.000Z');
 const DAY = 24 * 60 * 60_000;
 
-const PAIRS: ReadonlyArray<readonly [CandleInterval, CandleInterval]> = INTERVALS.flatMap((from, index) =>
+const PAIRS: readonly (readonly [CandleInterval, CandleInterval])[] = INTERVALS.flatMap((from, index) =>
   INTERVALS.slice(index + 1).map(to => [from.value, to.value] as const),
 );
 

@@ -1,6 +1,22 @@
+import { DataProvider, getDefaultManagers, useController } from '@data-client/react';
+import type { Controller } from '@data-client/react';
+import { mockInitialState, MockResolver } from '@data-client/test';
+import { useState } from 'react';
+import { AccessibilityInfo, Animated, Dimensions, PixelRatio, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+
+import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
+import { candleIndexAt } from '@/components/candleLayout';
+import { intervalMs, periodStart } from '@/components/chartMotion';
+import { formatCandleTime } from '@/components/formatMarket';
+import { getCandles, upsertCandle, type CandleInterval } from '@/resources/Candle';
+import CandleStream from '@/resources/CandleStream';
+import { FakeSocket, installFakeSocket } from '@/resources/testSocket';
+
 jest.mock('@reactive/silk-native', () => {
   const React = require('react');
-  const { Pressable, Text: RNText, View } = require('react-native');
+  const { Pressable, Text: RNText } = require('react-native');
   const theme = {
     semantic: {
       radius: { full: 999 },
@@ -37,22 +53,6 @@ jest.mock('@reactive/silk-native', () => {
       ),
   };
 });
-
-import { DataProvider, getDefaultManagers, useController } from '@data-client/react';
-import type { Controller } from '@data-client/react';
-import { mockInitialState, MockResolver } from '@data-client/test';
-import { useState } from 'react';
-import { AccessibilityInfo, Animated, Dimensions, PixelRatio, StyleSheet } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-
-import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
-import { candleIndexAt } from '@/components/candleLayout';
-import { intervalMs, periodStart } from '@/components/chartMotion';
-import { formatCandleTime } from '@/components/formatMarket';
-import { getCandles, INTERVALS, upsertCandle, type CandleInterval } from '@/resources/Candle';
-import CandleStream from '@/resources/CandleStream';
-import { FakeSocket, installFakeSocket } from '@/resources/testSocket';
 
 const { act } = TestRenderer;
 
@@ -527,7 +527,6 @@ it('keeps a chart-local failure inside the frame and retries only the chart', as
 });
 
 it('fetches a cached list from the previous minute and skips a current one', async () => {
-  const staleOpen = period(NOW, '1m') - MINUTE;
   mount({
     interval: '15m',
     seeds: [current15(), seed('1w', period(NOW, '1w') - 7 * 24 * 60 * MINUTE, 50), seed('4h', period(NOW, '4h'), 333)],
@@ -997,7 +996,7 @@ function pointerAt(x: number, type = 'mouse') {
 }
 
 it('shows the candle under the pointer and returns to the latest close', async () => {
-  const quotes: Array<ScrubQuote | null> = [];
+  const quotes: (ScrubQuote | null)[] = [];
   mount({
     interval: '15m',
     seeds: [series('15m')],

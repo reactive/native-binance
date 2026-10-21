@@ -26,8 +26,8 @@ import {
   type PointerEvent,
   type TextStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useScreenInsets } from '@/components/screenInsets';
 import {
   cachedListReady,
   CAPTION_DELAY_MS,
@@ -1830,7 +1830,7 @@ function ChartBody({
 }): JSX.Element {
   const controller = useController();
   const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   const plot = plotSize(width, height, insets.top, insets.bottom);
   const openedAt = useRef(interval).current;
   const hadList = useRef(listExists(controller, symbol, openedAt)).current;

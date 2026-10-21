@@ -25,7 +25,7 @@ Load `EXPO_TOKEN` from `.env.local` for local EAS commands. Never print the toke
 
 ## This project
 
-- SDK 58 beta, React Native 0.88 RC, React 19.3.
+- SDK 58, React Native 0.88, React 19.3.
 - UI is `@reactive/silk-native`, vendored in `vendor/` until Silk is published. Refresh with `yarn vendor:silk` from a sibling `../silk` checkout.
 - Data is Reactive Data Client. Skills live in `.agents/skills/`.
 - Do not generate `ios/` or `android/` by hand.
