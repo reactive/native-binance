@@ -8,12 +8,6 @@ import { View, type ViewProps } from 'react-native';
  *
  * `dataSet` is how react-native-web emits `data-*`. It is not on the native View type.
  */
-export function SafeScreen({ style, ...props }: ViewProps): JSX.Element {
-  return (
-    <View
-      {...props}
-      style={style}
-      {...({ dataSet: { safeScreen: 'true' } } as ViewProps)}
-    />
-  );
+export function SafeScreen(props: ViewProps): JSX.Element {
+  return <View {...props} {...({ dataSet: { safeScreen: 'true' } } as ViewProps)} />;
 }
