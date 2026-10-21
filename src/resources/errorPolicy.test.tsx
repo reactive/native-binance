@@ -1,7 +1,7 @@
 import { actionTypes, DataProvider, NetworkManager, useSuspense } from '@data-client/react';
 import type { Manager } from '@data-client/react';
 import { MockResolver, renderDataHook, renderHook } from '@data-client/test';
-import { act, createElement, type ReactNode } from 'react';
+import { act, type ReactNode } from 'react';
 
 import { TickerFeed } from '@/components/TickerFeed';
 
@@ -90,25 +90,22 @@ it('keeps the ticker socket subscribed when the first ticker read fails', async 
       TickerFeed();
     },
     {
-      wrapper: ({ children }: { children: ReactNode }) =>
-        createElement(
-          DataProvider,
-          { managers: [spy, network] },
-          createElement(
-            MockResolver,
-            {
-              fixtures: [
-                {
-                  endpoint: getTickers,
-                  args: [],
-                  response: new TypeError('Failed to fetch'),
-                  error: true as const,
-                },
-              ],
-            },
-            children,
-          ),
-        ),
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <DataProvider managers={[spy, network]}>
+          <MockResolver
+            fixtures={[
+              {
+                endpoint: getTickers,
+                args: [],
+                response: new TypeError('Failed to fetch'),
+                error: true,
+              },
+            ]}
+          >
+            {children}
+          </MockResolver>
+        </DataProvider>
+      ),
     },
   );
 
