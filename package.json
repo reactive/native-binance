@@ -13,8 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
     "vendor:silk": "node ./scripts/vendor-silk.mjs",
-    "link:data-client": "node ./scripts/link-data-client.mjs",
-    "unlink:data-client": "node ./scripts/link-data-client.mjs --unlink"
+    "link:data-client": "node ./scripts/data-client.mjs link",
+    "unlink:data-client": "node ./scripts/data-client.mjs unlink"
   },
   "dependencies": {
     "@data-client/react": "^0.18.1",

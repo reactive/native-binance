@@ -1,0 +1,3 @@
+{
+  "install": "node scripts/data-client.mjs setup"
+}
