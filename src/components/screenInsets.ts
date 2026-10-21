@@ -5,7 +5,7 @@ import { useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-conte
 const ZERO: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /** Browser safe-area env values. The web safe-area context is hard-zero in SDK 58. */
-export function readWebSafeAreaInsets(): EdgeInsets {
+function readWebSafeAreaInsets(): EdgeInsets {
   if (Platform.OS !== 'web' || typeof document === 'undefined') return ZERO;
   const probe = document.createElement('div');
   probe.style.position = 'absolute';
