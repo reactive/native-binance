@@ -12,7 +12,9 @@
     "web": "EXPO_OS=web expo start --web",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
-    "vendor:silk": "node ./scripts/vendor-silk.mjs"
+    "vendor:silk": "node ./scripts/vendor-silk.mjs",
+    "link:data-client": "node ./scripts/link-data-client.mjs",
+    "unlink:data-client": "node ./scripts/link-data-client.mjs --unlink"
   },
   "dependencies": {
     "@data-client/react": "^0.18.1",
@@ -50,9 +52,6 @@
     "jest-expo": "~58.0.3",
     "react-test-renderer": "19.3.0",
     "typescript": "~7.0.2"
-  },
-  "jest": {
-    "preset": "jest-expo"
   },
   "resolutions": {
     "@reactive/silk-core": "file:./vendor/silk-core.tgz"
