@@ -91,20 +91,24 @@ it('keeps the ticker socket subscribed when the first ticker read fails', async 
     },
     {
       wrapper: ({ children }: { children: ReactNode }) =>
-        createElement(DataProvider, {
-          managers: [spy, network],
-          children: createElement(MockResolver, {
-            fixtures: [
-              {
-                endpoint: getTickers,
-                args: [],
-                response: new TypeError('Failed to fetch'),
-                error: true as const,
-              },
-            ],
+        createElement(
+          DataProvider,
+          { managers: [spy, network] },
+          createElement(
+            MockResolver,
+            {
+              fixtures: [
+                {
+                  endpoint: getTickers,
+                  args: [],
+                  response: new TypeError('Failed to fetch'),
+                  error: true as const,
+                },
+              ],
+            },
             children,
-          }),
-        }),
+          ),
+        ),
     },
   );
 

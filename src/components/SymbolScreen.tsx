@@ -1,11 +1,11 @@
 import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
 import { Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
+import { SafeScreen } from '@/components/SafeScreen';
 import { DIRECTION_WORD } from '@/components/candleLayout';
 import { InstrumentInfo } from '@/components/InstrumentInfo';
 import { LoadError } from '@/components/LoadError';
@@ -42,11 +42,6 @@ const SEGMENTS = ['Chart', 'Info', 'Book', 'Trades'] as const;
 type Segment = (typeof SEGMENTS)[number];
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
-
-function goBack() {
-  if (router.canGoBack()) router.back();
-  else router.replace('/');
-}
 
 function PairTitle({ symbol }: { symbol: string }): JSX.Element {
   useSuspense(getExchangeInfo);
@@ -132,6 +127,11 @@ function TopBar({
   committed: boolean;
   onSearch: () => void;
 }): JSX.Element {
+  const router = useRouter();
+  const goBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, [router]);
   const pair = (
     <Heading level="1" size="sm" numberOfLines={1} testID="symbol-pair" style={styles.pair}>
       {symbol}
@@ -430,6 +430,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   const retryLoad = useCallback(() => setRetry(count => count + 1), []);
   const openSearch = useCallback(() => setSearching(true), []);
   const closeSearch = useCallback(() => setSearching(false), []);
+  const router = useRouter();
   useDismissSearchOnBack(searching, closeSearch);
   // setParams keeps this route. Prevention only blocks removal, so the choice
   // is not swallowed, and prevention does not have to be cleared first.
@@ -438,7 +439,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
       if (next === symbol) setSearching(false);
       else router.setParams({ symbol: next });
     },
-    [symbol],
+    [router, symbol],
   );
   // The lazy route's first render is still inside the route promise. A fetch that
   // settles there updates the store before DataProvider has committed. React drops
@@ -449,7 +450,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   }, []);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
+    <SafeScreen style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
       <View
         pointerEvents={searching ? 'none' : 'auto'}
         accessibilityElementsHidden={searching}
@@ -525,7 +526,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
         </View>
       </View>
       {searching ? <SymbolSearch onChoose={chooseSymbol} onDismiss={closeSearch} /> : null}
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
