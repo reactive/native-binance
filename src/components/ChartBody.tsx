@@ -520,7 +520,6 @@ const CandleMarks = memo(function CandleMarks({
   candles,
   placed,
   width,
-  height,
   ratio,
   motion,
   up,
@@ -531,7 +530,6 @@ const CandleMarks = memo(function CandleMarks({
   candles: readonly TravelCandle[];
   placed: readonly CandlePlacement[];
   width: number;
-  height: number;
   ratio: number;
   motion?: PlotMotion;
   up: string;
@@ -542,6 +540,7 @@ const CandleMarks = memo(function CandleMarks({
   const metrics = candleMetrics(width, ratio);
   const wickOffset = (metrics.body - metrics.wick) / 2;
   const minHollow = metrics.wick * 3;
+  // Body and hollow are children of the wick so they paint over it, and draw outside its bounds.
   return (
     <>
       {placed.map((item, index) => {
@@ -549,8 +548,8 @@ const CandleMarks = memo(function CandleMarks({
         const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
         const newest = index === placed.length - 1;
         const bodyLeft = Math.round(item.x * ratio);
-        const slotLeft = bodyLeft - metrics.gap;
-        const bodyTop = Math.round(item.bodyTop * ratio);
+        const wickTop = Math.round(item.wickTop * ratio);
+        const bodyTop = Math.round(item.bodyTop * ratio) - wickTop;
         const bodyH = Math.round(item.bodyHeight * ratio);
         const hollow = item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
         const tx = motion?.shifts?.get(candle.openTime);
@@ -558,48 +557,43 @@ const CandleMarks = memo(function CandleMarks({
         return (
           <Animated.View
             key={candle.openTime}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
             pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: slotLeft,
-              top: 0,
-              width: metrics.slot,
-              height: height * ratio,
-              opacity: covered ? motion?.coveredOpacity : 1,
-              transform: tx ? [{ translateX: tx }] : undefined,
-            }}
-          >
-            <DeviceMark
-              style={{
-                position: 'absolute',
-                left: metrics.gap + wickOffset,
-                top: Math.round(item.wickTop * ratio),
+            style={[
+              styles.mark,
+              {
+                left: bodyLeft + wickOffset,
+                top: wickTop,
                 width: metrics.wick,
                 height: Math.round(item.wickHeight * ratio),
                 backgroundColor: color,
-              }}
-            />
-            <DeviceMark
+                opacity: covered ? motion?.coveredOpacity : 1,
+                transform: tx ? [{ translateX: tx }] : undefined,
+              },
+            ]}
+          >
+            <View
               testID={newest ? 'candle-last' : undefined}
-              style={{
-                position: 'absolute',
-                left: metrics.gap,
-                top: bodyTop,
-                width: metrics.body,
-                height: bodyH,
-                backgroundColor: color,
-              }}
+              pointerEvents="none"
+              style={[
+                styles.mark,
+                { left: -wickOffset, top: bodyTop, width: metrics.body, height: bodyH, backgroundColor: color },
+              ]}
             />
             {hollow ?
-              <DeviceMark
-                style={{
-                  position: 'absolute',
-                  left: metrics.gap + metrics.wick,
-                  top: bodyTop + metrics.wick,
-                  width: metrics.body - metrics.wick * 2,
-                  height: bodyH - metrics.wick * 2,
-                  backgroundColor: surface,
-                }}
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.mark,
+                  {
+                    left: metrics.wick - wickOffset,
+                    top: bodyTop + metrics.wick,
+                    width: metrics.body - metrics.wick * 2,
+                    height: bodyH - metrics.wick * 2,
+                    backgroundColor: surface,
+                  },
+                ]}
               />
             : null}
           </Animated.View>
@@ -696,7 +690,6 @@ const CandlePlot = memo(function CandlePlot({
             candles={candles}
             placed={placed}
             width={width}
-            height={height}
             ratio={ratio}
             motion={motion}
             up={up}
@@ -1942,6 +1935,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
+  },
+  mark: {
+    position: 'absolute',
+    overflow: 'visible',
   },
   scrubLabel: {
     position: 'absolute',
