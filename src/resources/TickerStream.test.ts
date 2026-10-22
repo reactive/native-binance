@@ -32,11 +32,12 @@ it('keeps every symbol when a later batch arrives before the first is flushed', 
 });
 
 it('writes symbols from a batch that arrived while the previous write was in flight', async () => {
-  const written: string[] = [];
+  const written: string[][] = [];
   let release: (() => void) | undefined;
   const controller = {
-    set(_schema: unknown, args: { symbol: string }) {
-      written.push(args.symbol);
+    set(schema: unknown, rows: readonly { s: string }[]) {
+      expect(schema).toEqual([Ticker]);
+      written.push(rows.map(row => row.s));
       if (!release) {
         return new Promise<void>(resolve => {
           release = resolve;
@@ -57,12 +58,57 @@ it('writes symbols from a batch that arrived while the previous write was in fli
     socket.onmessage?.({ data: JSON.stringify([mini('BTCUSDT', '1', 1)]) });
     socket.onmessage?.({ data: JSON.stringify([mini('ETHUSDT', '2', 2)]) });
     socket.onmessage?.({ data: JSON.stringify([mini('ADAUSDT', '3', 3)]) });
-    expect(written).toEqual(['BTCUSDT']);
+    expect(written).toEqual([['BTCUSDT']]);
     release?.();
     await act(async () => {
       await Promise.resolve();
     });
-    expect(written).toEqual(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
+    expect(written).toEqual([
+      ['BTCUSDT'],
+      ['ETHUSDT', 'ADAUSDT'],
+    ]);
+  } finally {
+    stream.cleanup();
+    installed.restore();
+  }
+});
+
+it('keeps a symbol the socket message left out', async () => {
+  const installed = installFakeSocket();
+  const stream = new TickerStream();
+  const { result, controller } = renderDataHook(() => ({
+    btc: useQuery(Ticker, { symbol: 'BTCUSDT' }),
+    eth: useQuery(Ticker, { symbol: 'ETHUSDT' }),
+  }));
+  const row = {
+    symbol: 'BTCUSDT',
+    lastPrice: '10',
+    openPrice: '100',
+    highPrice: '10',
+    lowPrice: '1',
+    volume: '1',
+    quoteVolume: '9',
+    closeTime: 100,
+  };
+  try {
+    await actWrite(() =>
+      controller.resolve(getTickers, {
+        args: [],
+        response: [row, { ...row, symbol: 'ETHUSDT', lastPrice: '110', closeTime: 100 }],
+        fetchedAt: 1,
+      }),
+    );
+    const next = stream.middleware(controller);
+    await next(() => Promise.resolve())({
+      type: actionTypes.SUBSCRIBE,
+      endpoint: getTickers,
+    } as never);
+    await act(async () => {
+      installed.sockets[0].onmessage?.({ data: JSON.stringify([mini('BTCUSDT', '130', 3_000)]) });
+      await Promise.resolve();
+    });
+    expect(result.current.btc?.last).toBe(130);
+    expect(result.current.eth?.last).toBe(110);
   } finally {
     stream.cleanup();
     installed.restore();
@@ -130,9 +176,8 @@ it('keeps a newer last price when an older ticker snapshot arrives', async () =>
     btc: useQuery(Ticker, { symbol: 'BTCUSDT' }),
     eth: useQuery(Ticker, { symbol: 'ETHUSDT' }),
   }));
-  await actWrite(() =>
-    controller.set(Ticker, { symbol: 'BTCUSDT' }, { ...mini('BTCUSDT', '120', 2_000), q: '60' }),
-  );
+  const newer: object = { ...mini('BTCUSDT', '120', 2_000), q: '60' };
+  await actWrite(() => controller.set(Ticker, { symbol: 'BTCUSDT' }, newer));
   expect(result.current.btc?.last).toBe(120);
   expect(result.current.btc?.quoteVolume).toBe(60);
 
@@ -156,9 +201,8 @@ it('keeps a newer last price when an older ticker snapshot arrives', async () =>
   expect(result.current.btc?.last).toBe(120);
   expect(result.current.eth?.last).toBe(110);
 
-  await actWrite(() =>
-    controller.set(Ticker, { symbol: 'BTCUSDT' }, { ...row, lastPrice: '1', closeTime: 500 }),
-  );
+  const older = { ...row, lastPrice: '1', closeTime: 500 };
+  await actWrite(() => controller.set(Ticker, { symbol: 'BTCUSDT' }, older));
   expect(result.current.btc?.last).toBe(120);
   expect(result.current.btc?.eventTime).toBe(2_000);
   expect(result.current.eth?.last).toBe(110);

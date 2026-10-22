@@ -1033,41 +1033,41 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@data-client/core@npm:^0.18.1":
-  version: 0.18.1
-  resolution: "@data-client/core@npm:0.18.1"
+"@data-client/core@npm:^0.18.2":
+  version: 0.18.2
+  resolution: "@data-client/core@npm:0.18.2"
   dependencies:
     "@babel/runtime": "npm:^7.20.0"
-    "@data-client/normalizr": "npm:^0.18.1"
+    "@data-client/normalizr": "npm:^0.18.2"
     flux-standard-action: "npm:^2.1.1"
-  checksum: 10c0/a90e81087b103652073f6f8b477cb780d83f8963a4dd1c324b05a7ad1679a1d00f4029f474b861a51b5b908de5215a95701544306c85bf92d096868629b5ee00
+  checksum: 10c0/d54a87666d5e50999b286b1e653c1b94bb3f9f7a79fa3bec6831602bb90f14e8dd89c48c16858ff2a85b919898e1eb1aa124e3cbdf1ac4c7b422f73a45bfdb57
   languageName: node
   linkType: hard
 
-"@data-client/endpoint@npm:^0.18.0":
-  version: 0.18.0
-  resolution: "@data-client/endpoint@npm:0.18.0"
+"@data-client/endpoint@npm:^0.18.2":
+  version: 0.18.2
+  resolution: "@data-client/endpoint@npm:0.18.2"
   dependencies:
     "@babel/runtime": "npm:^7.20.0"
-  checksum: 10c0/3b946b81e5a7c7f1c69988ead394e2ada6f156419b8fd49cf52c18a6dbd7ceb157499ebf1b610102ded5b5e2b6e7ada260974b9cc932d612cff2a9bb36f7e900
+  checksum: 10c0/b483ce3307891ca395e02667e4275bc5096ca43f521ff7b929b56640f4ae2cc14a815efedc3a361b57fe6c157fe0877b13367e9e88c47bb6940e4e3262b6799f
   languageName: node
   linkType: hard
 
-"@data-client/normalizr@npm:^0.18.1":
-  version: 0.18.1
-  resolution: "@data-client/normalizr@npm:0.18.1"
+"@data-client/normalizr@npm:^0.18.2":
+  version: 0.18.2
+  resolution: "@data-client/normalizr@npm:0.18.2"
   dependencies:
     "@babel/runtime": "npm:^7.20.0"
-  checksum: 10c0/3c53a0ac055ad4236614fa842433f0fafc40d9d31d97ada8c24e0f6c417304a37ad8219f75f2a1b5e9b39d6925374413543c0687a8190ca80d00b27cc8e8e6f6
+  checksum: 10c0/a47be201db0f119db1a7709aceb01b97370238f646888f9a7ff4dfe4751d510732edd90975c74318ad12fe4c0f16b1f67d8aeff8d2ffaff779c71c2caeb7c4fe
   languageName: node
   linkType: hard
 
-"@data-client/react@npm:^0.18.1":
-  version: 0.18.1
-  resolution: "@data-client/react@npm:0.18.1"
+"@data-client/react@npm:^0.18.2":
+  version: 0.18.2
+  resolution: "@data-client/react@npm:0.18.2"
   dependencies:
     "@babel/runtime": "npm:^7.20.0"
-    "@data-client/core": "npm:^0.18.1"
+    "@data-client/core": "npm:^0.18.2"
     "@data-client/use-enhanced-reducer": "npm:^0.1.14"
   peerDependencies:
     "@react-navigation/native": ^6.0.0 || ^7.0.0
@@ -1078,24 +1078,24 @@ __metadata:
       optional: true
     "@types/react":
       optional: true
-  checksum: 10c0/7795f4e6e9df5d9045b081e2d62d60e37d5a68db5f9e326adb79eb65e197310c28b609360a8b6617bb7777ca04bab32980b86c42d07fdba900441b448e782e75
+  checksum: 10c0/e913cce915f16bebefe3db351d9976da2ead4110a8c43cd0baf3335ce9e4d9dab60865cf10812e29a8b21e30898b1ab1f045787c95687fbd45ea42bea860a20e
   languageName: node
   linkType: hard
 
-"@data-client/rest@npm:^0.18.1":
-  version: 0.18.1
-  resolution: "@data-client/rest@npm:0.18.1"
+"@data-client/rest@npm:^0.18.2":
+  version: 0.18.2
+  resolution: "@data-client/rest@npm:0.18.2"
   dependencies:
     "@babel/runtime": "npm:^7.20.0"
-    "@data-client/endpoint": "npm:^0.18.0"
+    "@data-client/endpoint": "npm:^0.18.2"
     path-to-regexp: "npm:^8.1.0"
-  checksum: 10c0/c2ae10a36ce19750c67e895e44b65e24cb4aa2d16e7bdf3818c1f907c8003567f966bc0ce2c81bd2aa045b1adf3ed116437db8b2c331029c9add5b84bd38a43d
+  checksum: 10c0/561970a0248fe181f944a7b32a550077a3f792cee7bec184e1c8d8bd78999592e025df2e175c06973aad488e1928ff5821d7e0b9eaddf17bba89692c0126ee09
   languageName: node
   linkType: hard
 
-"@data-client/test@npm:0.18.0":
-  version: 0.18.0
-  resolution: "@data-client/test@npm:0.18.0"
+"@data-client/test@npm:0.18.2":
+  version: 0.18.2
+  resolution: "@data-client/test@npm:0.18.2"
   dependencies:
     "@babel/runtime": "npm:^7.20.0"
     "@testing-library/dom": "npm:^10.1.0"
@@ -1128,7 +1128,7 @@ __metadata:
       optional: true
     react-test-renderer:
       optional: true
-  checksum: 10c0/d9a09defa94e8713956210f5a5f267cbde7e1bbba7c150eb7a53f8f498c4198b12458ad7a146695f5cf1423c3e12bb990402ea87331a71c8e6b74bfd6bdd2177
+  checksum: 10c0/3613ded5d1e669f7a2123fad2dfdce190e9801ecfa0eb9a8e6a3ab1ff5d6ddadb4408f803b3ca7c8f8d31355b809da049fdb4996d7f8d401ce8077d4c5a26486
   languageName: node
   linkType: hard
 
@@ -8601,9 +8601,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "native-binance@workspace:."
   dependencies:
-    "@data-client/react": "npm:^0.18.1"
-    "@data-client/rest": "npm:^0.18.1"
-    "@data-client/test": "npm:0.18.0"
+    "@data-client/react": "npm:^0.18.2"
+    "@data-client/rest": "npm:^0.18.2"
+    "@data-client/test": "npm:0.18.2"
     "@react-native/jest-preset": "npm:0.88.0"
     "@reactive/silk-core": "file:./vendor/silk-core.tgz"
     "@reactive/silk-native": "file:./vendor/silk-native.tgz"

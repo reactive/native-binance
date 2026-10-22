@@ -482,12 +482,17 @@ it('keeps the frozen outgoing close when a kline arrives mid-fade', async () => 
   await settle();
   expect(textOf('candle-close')).toBe('111');
   await press('interval-1h');
+  const kline: object = {
+    t: period(NOW, '15m'),
+    o: '100',
+    h: '110',
+    l: '90',
+    c: '999',
+    v: '5',
+    n: 20,
+  };
   act(() => {
-    void controller?.set(
-      upsertCandle,
-      { symbol: SYMBOL, interval: '15m' },
-      [{ t: period(NOW, '15m'), o: '100', h: '110', l: '90', c: '999', v: '5', n: 20 }],
-    );
+    void controller?.set(upsertCandle, { symbol: SYMBOL, interval: '15m' }, [kline]);
   });
   expect(textOf('candle-close')).toBe('111');
   expect(present('candle-last')).toBe(true);
@@ -881,12 +886,17 @@ it('reverses a travel without a fetch and fades a third pill', async () => {
   expect(present('candle-series-15m')).toBe(true);
   expect(present('candle-series-1h')).toBe(true);
   const close = textOf('candle-close');
+  const kline: object = {
+    t: period(NOW, '15m'),
+    o: '100',
+    h: '110',
+    l: '90',
+    c: '999',
+    v: '5',
+    n: 20,
+  };
   act(() => {
-    void controller?.set(
-      upsertCandle,
-      { symbol: SYMBOL, interval: '15m' },
-      [{ t: period(NOW, '15m'), o: '100', h: '110', l: '90', c: '999', v: '5', n: 20 }],
-    );
+    void controller?.set(upsertCandle, { symbol: SYMBOL, interval: '15m' }, [kline]);
   });
   expect(textOf('candle-close')).toBe(close);
 

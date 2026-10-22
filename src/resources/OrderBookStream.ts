@@ -205,7 +205,8 @@ export default class OrderBookStream implements Manager {
         this.resync(symbol);
         return;
       }
-      await this.controller.set(OrderBook, { symbol }, event);
+      const update: object = event;
+      await this.controller.set(OrderBook, { symbol }, update);
       const latest = this.heads.get(symbol);
       if (latest != null && latest > event.u) {
         head = latest;
