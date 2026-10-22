@@ -3,6 +3,7 @@ import { Text, useTheme } from '@reactive/silk-native';
 import {
   forwardRef,
   memo,
+  startTransition,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -81,6 +82,10 @@ const NATIVE_DRIVER = Platform.OS !== 'web' && process.env.JEST_WORKER_ID == nul
 // JavaScript springs timestamp independently, so web and Jest share one clock.
 const SHARE_CLOCK = !NATIVE_DRIVER;
 const LABELS = ['Open', 'High', 'Low', 'Close'] as const;
+/** A step on screen sooner than this after the clock starts mounts in the start commit. */
+const SLICED_MIN_MS = 50;
+/** A step whose time-sliced mount has not committed by this long before it is on screen mounts urgently. */
+const SLICED_DEADLINE_MS = 34;
 
 type Phase =
   | { kind: 'live' | 'in' | 'out'; interval: CandleInterval }
@@ -998,6 +1003,10 @@ function ChartFrame({
   ).current;
 
   const [shown, setShown] = useState<readonly number[]>([]);
+  const shownRef = useRef(shown);
+  useLayoutEffect(() => {
+    shownRef.current = shown;
+  }, [shown]);
   const [phase, setPhase] = useState<Phase>(() => {
     if (bootKind === 'fresh') return { kind: 'live', interval: requested };
     if (!readyAtStart) return { kind: 'empty' };
@@ -1207,16 +1216,31 @@ function ChartFrame({
   }, []);
 
   const stageSession = useCallback((session: Session) => {
-    const initial = session.plan.steps.flatMap((step, index) => (step.mountAt <= 0 ? [index] : []));
-    setShown(initial);
-    session.plan.steps.forEach((step, index) => {
-      if (step.mountAt <= 0) return;
+    const { steps } = session.plan;
+    const add = (index: number) => (current: readonly number[]) =>
+      current.includes(index) ? current : [...current, index];
+    const later = (delay: number, run: () => void) => {
       const timer = setTimeout(() => {
-        if (sessionRef.current !== session) return;
-        attachShifts(session.steps[index], step);
-        setShown(current => (current.includes(index) ? current : [...current, index]));
-      }, step.mountAt);
+        if (sessionRef.current === session) run();
+      }, delay);
       session.timers.push(timer);
+    };
+    shownRef.current = [];
+    setShown(steps.flatMap((step, index) => (step.visibleAt < SLICED_MIN_MS ? [index] : [])));
+    steps.forEach((step, index) => {
+      if (step.visibleAt < SLICED_MIN_MS) return;
+      const graph = session.steps[index];
+      const mount = () => {
+        attachShifts(graph, step);
+        startTransition(() => setShown(add(index)));
+      };
+      if (step.mountAt <= 0) mount();
+      else later(step.mountAt, mount);
+      later(step.visibleAt - SLICED_DEADLINE_MS, () => {
+        if (shownRef.current.includes(index)) return;
+        attachShifts(graph, step);
+        setShown(add(index));
+      });
     });
   }, []);
 

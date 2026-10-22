@@ -64,6 +64,8 @@ export type StepPlan = {
   forwardThreshold: number;
   reverseThreshold: number;
   mountAt: number;
+  /** ms after the clock starts when the first candle of this step is on screen. */
+  visibleAt: number;
   input: number[];
   scaleX: number[];
   translateX: number[];
@@ -715,6 +717,7 @@ function assemble(
       forwardThreshold: Math.max(1 - pLast, 0.01),
       reverseThreshold: Math.max(pFirst, 0.0001),
       mountAt: Math.max(0, timeOfQ(qFirst, duration) - leadMs),
+      visibleAt: timeOfQ(qFirst, duration),
       input: inputRange,
       scaleX,
       translateX,
