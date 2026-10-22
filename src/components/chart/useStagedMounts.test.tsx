@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
 import {
@@ -95,7 +96,9 @@ it('runs the sliced mount at mountAt and the urgent mount only if it has not com
 
 function Harness({ onMount }: { onMount: (index: number) => void }) {
   const staged = useStagedMounts(onMount);
-  harness = staged;
+  useEffect(() => {
+    harness = staged;
+  });
   return null;
 }
 
