@@ -1021,12 +1021,7 @@ function ChartFrame({
   const failedRef = useRef<CandleInterval | null>(null);
   const revealedRef = useRef<Animated.Value | null>(null);
   const sessionRef = useRef<Session | null>(null);
-  const mountShifts = useCallback((index: number) => {
-    const session = sessionRef.current;
-    if (!session) return;
-    attachShifts(session.steps[index], session.plan.steps[index]);
-  }, []);
-  const { shown, stage, cancel, reset } = useStagedMounts(mountShifts);
+  const { shown, stage, cancel, reset } = useStagedMounts();
   const travelToken = useRef(0);
   const widthRef = useRef(width);
   widthRef.current = width;
@@ -1396,7 +1391,9 @@ function ChartFrame({
               const session = buildSession(decided.plan, origin);
               sessionRef.current = session;
               shell.setValue(1);
-              stage(session.plan.steps, session);
+              stage(session.plan.steps, index => {
+                attachShifts(session.steps[index], session.plan.steps[index]);
+              });
               const traveling: Phase = { kind: 'travel', session };
               phaseRef.current = traveling;
               setPhase(traveling);

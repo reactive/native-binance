@@ -11,69 +11,25 @@ export type StepTiming = {
   visibleAt: number;
 };
 
-export type StagedMount =
-  | { index: number; kind: 'immediate' }
-  | { index: number; kind: 'deferred'; transitionAt: number; urgentAt: number };
-
-/** Which steps mount in the start commit, and when each later step slices or falls back. */
-export function stageMounts(steps: readonly StepTiming[]): StagedMount[] {
-  return steps.map((step, index) =>
-    step.visibleAt < START_COMMIT_MS ?
-      { index, kind: 'immediate' }
-    : {
-        index,
-        kind: 'deferred',
-        transitionAt: step.mountAt,
-        urgentAt: step.visibleAt - URGENT_LEAD_MS,
-      },
-  );
-}
-
-export function appendStep(shown: readonly number[], index: number): readonly number[] {
-  return shown.includes(index) ? shown : [...shown, index];
-}
-
-type MountClock = {
-  later: (delay: number, run: () => void) => void;
-  show: (indices: readonly number[]) => void;
-  transition: (index: number) => void;
-  urgent: (index: number) => void;
-};
-
-/** Schedules mounts from step timings. The start commit is shown before any sliced mount is queued. */
-export function scheduleMounts(steps: readonly StepTiming[], clock: MountClock): void {
-  const plan = stageMounts(steps);
-  clock.show(plan.flatMap(step => (step.kind === 'immediate' ? [step.index] : [])));
-  for (const step of plan) {
-    if (step.kind !== 'deferred') continue;
-    const mount = () => clock.transition(step.index);
-    if (step.transitionAt <= 0) mount();
-    else clock.later(step.transitionAt, mount);
-    clock.later(step.urgentAt, () => clock.urgent(step.index));
-  }
-}
-
 /**
  * Mounts travel steps from their plan timings.
  * `stage` shows the start-commit steps in that turn. `cancel` drops timers and keeps what is already shown.
  * `reset` drops timers and clears the shown set.
  */
-export function useStagedMounts(onMount: (index: number) => void): {
+export function useStagedMounts(): {
   shown: readonly number[];
-  stage: (steps: readonly StepTiming[], token: object) => void;
+  stage: (steps: readonly StepTiming[], onMount: (index: number) => void) => void;
   cancel: () => void;
   reset: () => void;
 } {
   const [shown, setShown] = useState<readonly number[]>([]);
   const shownRef = useRef(shown);
-  const tokenRef = useRef<object | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const onMountRef = useRef(onMount);
+  const onMountRef = useRef<(index: number) => void>(() => {});
 
   useLayoutEffect(() => {
-    onMountRef.current = onMount;
     shownRef.current = shown;
-  }, [onMount, shown]);
+  }, [shown]);
 
   const clearTimers = useCallback(() => {
     for (const timer of timers.current) clearTimeout(timer);
@@ -81,28 +37,30 @@ export function useStagedMounts(onMount: (index: number) => void): {
   }, []);
 
   const stage = useCallback(
-    (steps: readonly StepTiming[], token: object) => {
+    (steps: readonly StepTiming[], onMount: (index: number) => void) => {
       clearTimers();
-      tokenRef.current = token;
+      onMountRef.current = onMount;
       shownRef.current = [];
+      const add = (index: number) => (current: readonly number[]) =>
+        current.includes(index) ? current : [...current, index];
       const later = (delay: number, run: () => void) => {
-        const timer = setTimeout(() => {
-          if (tokenRef.current === token) run();
-        }, delay);
-        timers.current.push(timer);
+        timers.current.push(setTimeout(run, delay));
       };
-      scheduleMounts(steps, {
-        later,
-        show: indices => setShown(indices),
-        transition: index => {
+      // The start commit is shown before any sliced mount is queued.
+      setShown(steps.flatMap((step, index) => (step.visibleAt < START_COMMIT_MS ? [index] : [])));
+      steps.forEach((step, index) => {
+        if (step.visibleAt < START_COMMIT_MS) return;
+        const mount = () => {
           onMountRef.current(index);
-          startTransition(() => setShown(current => appendStep(current, index)));
-        },
-        urgent: index => {
+          startTransition(() => setShown(add(index)));
+        };
+        if (step.mountAt <= 0) mount();
+        else later(step.mountAt, mount);
+        later(step.visibleAt - URGENT_LEAD_MS, () => {
           if (shownRef.current.includes(index)) return;
           onMountRef.current(index);
-          setShown(current => appendStep(current, index));
-        },
+          setShown(add(index));
+        });
       });
     },
     [clearTimers],
@@ -110,12 +68,10 @@ export function useStagedMounts(onMount: (index: number) => void): {
 
   const cancel = useCallback(() => {
     clearTimers();
-    tokenRef.current = null;
   }, [clearTimers]);
 
   const reset = useCallback(() => {
     clearTimers();
-    tokenRef.current = null;
     setShown([]);
   }, [clearTimers]);
 

@@ -1,101 +1,10 @@
 import { useEffect } from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
-import {
-  START_COMMIT_MS,
-  URGENT_LEAD_MS,
-  appendStep,
-  scheduleMounts,
-  stageMounts,
-  useStagedMounts,
-  type StepTiming,
-} from './useStagedMounts';
+import { START_COMMIT_MS, URGENT_LEAD_MS, useStagedMounts } from './useStagedMounts';
 
-const STEPS: StepTiming[] = [
-  { mountAt: 0, visibleAt: 0 },
-  { mountAt: 0, visibleAt: START_COMMIT_MS - 1 },
-  { mountAt: 0, visibleAt: START_COMMIT_MS },
-  { mountAt: 0, visibleAt: 89 },
-  { mountAt: 45, visibleAt: 195 },
-];
-
-function clock() {
-  const timers: { delay: number; run: () => void }[] = [];
-  const transition: number[] = [];
-  const urgent: number[] = [];
-  let shown: readonly number[] = [];
-  const committed = new Set<number>();
-  scheduleMounts(STEPS, {
-    later: (delay, run) => timers.push({ delay, run }),
-    show: indices => {
-      shown = indices;
-      for (const index of indices) committed.add(index);
-    },
-    transition: index => transition.push(index),
-    urgent: index => {
-      urgent.push(index);
-      if (committed.has(index)) return;
-      shown = appendStep(shown, index);
-      committed.add(index);
-    },
-  });
-  return {
-    timers,
-    transition,
-    urgent,
-    committed,
-    shown: () => shown,
-    run(delay: number) {
-      const due = timers.filter(timer => timer.delay === delay);
-      for (const timer of due) timer.run();
-    },
-  };
-}
-
-it('mounts only steps on screen within 50 ms in the start commit', () => {
-  expect(stageMounts(STEPS)).toEqual([
-    { index: 0, kind: 'immediate' },
-    { index: 1, kind: 'immediate' },
-    { index: 2, kind: 'deferred', transitionAt: 0, urgentAt: START_COMMIT_MS - URGENT_LEAD_MS },
-    { index: 3, kind: 'deferred', transitionAt: 0, urgentAt: 89 - URGENT_LEAD_MS },
-    { index: 4, kind: 'deferred', transitionAt: 45, urgentAt: 195 - URGENT_LEAD_MS },
-  ]);
-});
-
-it('slices a step that is already due when it is still 50 ms from the screen', () => {
-  const plan = stageMounts([{ mountAt: 0, visibleAt: 89 }]);
-  expect(plan).toEqual([{ index: 0, kind: 'deferred', transitionAt: 0, urgentAt: 55 }]);
-});
-
-it('keeps an append idempotent', () => {
-  const shown = [0, 2];
-  expect(appendStep(shown, 2)).toBe(shown);
-  expect(appendStep(shown, 1)).toEqual([0, 2, 1]);
-});
-
-it('runs the sliced mount at mountAt and the urgent mount only if it has not committed', () => {
-  const staged = clock();
-  expect(staged.shown()).toEqual([0, 1]);
-  expect(staged.transition).toEqual([2, 3]);
-  expect(staged.timers.map(timer => timer.delay).sort((a, b) => a - b)).toEqual(
-    [45, START_COMMIT_MS - URGENT_LEAD_MS, 89 - URGENT_LEAD_MS, 195 - URGENT_LEAD_MS].sort((a, b) => a - b),
-  );
-
-  staged.run(START_COMMIT_MS - URGENT_LEAD_MS);
-  staged.run(89 - URGENT_LEAD_MS);
-  expect(staged.urgent).toEqual([2, 3]);
-  expect(staged.shown()).toEqual([0, 1, 2, 3]);
-
-  staged.run(45);
-  expect(staged.transition).toEqual([2, 3, 4]);
-  staged.committed.add(4);
-  staged.run(195 - URGENT_LEAD_MS);
-  expect(staged.urgent).toEqual([2, 3, 4]);
-  expect(staged.shown()).toEqual([0, 1, 2, 3]);
-});
-
-function Harness({ onMount }: { onMount: (index: number) => void }) {
-  const staged = useStagedMounts(onMount);
+function Harness() {
+  const staged = useStagedMounts();
   useEffect(() => {
     harness = staged;
   });
@@ -113,20 +22,46 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+function mountHarness() {
+  act(() => {
+    TestRenderer.create(<Harness />);
+  });
+}
+
+it('mounts a step in the start commit only when it is on screen within 50 ms', () => {
+  const react = jest.requireActual<typeof import('react')>('react');
+  const spy = jest.spyOn(react, 'startTransition').mockImplementation(() => {});
+  const mounted: number[] = [];
+  mountHarness();
+  act(() => {
+    harness?.stage(
+      [
+        { mountAt: 0, visibleAt: 0 },
+        { mountAt: 0, visibleAt: START_COMMIT_MS - 1 },
+        { mountAt: 0, visibleAt: START_COMMIT_MS },
+        { mountAt: 0, visibleAt: 89 },
+      ],
+      index => mounted.push(index),
+    );
+  });
+  expect(harness?.shown).toEqual([0, 1]);
+  expect(mounted).toEqual([2, 3]);
+  spy.mockRestore();
+});
+
 it('shows the start commit immediately and the sliced steps after their timers', () => {
   const mounted: number[] = [];
   let tree: TestRenderer.ReactTestRenderer;
   act(() => {
-    tree = TestRenderer.create(<Harness onMount={index => mounted.push(index)} />);
+    tree = TestRenderer.create(<Harness />);
   });
-  const token = {};
   act(() => {
     harness?.stage(
       [
         { mountAt: 0, visibleAt: 0 },
         { mountAt: 40, visibleAt: 120 },
       ],
-      token,
+      index => mounted.push(index),
     );
   });
   expect(harness?.shown).toEqual([0]);
@@ -137,27 +72,32 @@ it('shows the start commit immediately and the sliced steps after their timers',
   expect(mounted).toEqual([1]);
   expect(harness?.shown).toEqual([0, 1]);
   act(() => {
-    jest.advanceTimersByTime(120);
+    jest.advanceTimersByTime(120 - URGENT_LEAD_MS);
   });
+  expect(mounted).toEqual([1]);
   expect(harness?.shown).toEqual([0, 1]);
   act(() => {
     tree.unmount();
   });
 });
 
-it('drops a deferred step when staging is cancelled before its timer', () => {
+it('keeps the start commit when a later step is cancelled', () => {
   const mounted: number[] = [];
+  mountHarness();
   act(() => {
-    TestRenderer.create(<Harness onMount={index => mounted.push(index)} />);
-  });
-  act(() => {
-    harness?.stage([{ mountAt: 40, visibleAt: 120 }], {});
+    harness?.stage(
+      [
+        { mountAt: 0, visibleAt: 0 },
+        { mountAt: 40, visibleAt: 120 },
+      ],
+      index => mounted.push(index),
+    );
     harness?.cancel();
   });
   act(() => {
     jest.advanceTimersByTime(200);
   });
-  expect(harness?.shown).toEqual([]);
+  expect(harness?.shown).toEqual([0]);
   expect(mounted).toEqual([]);
 });
 
@@ -165,11 +105,9 @@ it('mounts urgently when the sliced update has not committed', () => {
   const react = jest.requireActual<typeof import('react')>('react');
   const spy = jest.spyOn(react, 'startTransition').mockImplementation(() => {});
   const mounted: number[] = [];
+  mountHarness();
   act(() => {
-    TestRenderer.create(<Harness onMount={index => mounted.push(index)} />);
-  });
-  act(() => {
-    harness?.stage([{ mountAt: 0, visibleAt: 89 }], {});
+    harness?.stage([{ mountAt: 0, visibleAt: 89 }], index => mounted.push(index));
   });
   expect(harness?.shown).toEqual([]);
   expect(mounted).toEqual([0]);
@@ -182,11 +120,9 @@ it('mounts urgently when the sliced update has not committed', () => {
 });
 
 it('clears the shown steps on reset', () => {
+  mountHarness();
   act(() => {
-    TestRenderer.create(<Harness onMount={() => {}} />);
-  });
-  act(() => {
-    harness?.stage([{ mountAt: 0, visibleAt: 0 }], {});
+    harness?.stage([{ mountAt: 0, visibleAt: 0 }], () => {});
   });
   expect(harness?.shown).toEqual([0]);
   act(() => {
