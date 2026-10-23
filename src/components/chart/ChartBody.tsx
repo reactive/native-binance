@@ -53,6 +53,7 @@ import {
   type TravelPlan,
 } from '@/components/chart/chartTravel';
 import { MotionView } from '@/components/chart/MotionView';
+import { useStagedMounts } from '@/components/chart/useStagedMounts';
 import { LoadError } from '@/components/common/LoadError';
 import { Pill } from '@/components/common/Pill';
 import {
@@ -131,7 +132,6 @@ type Session = {
   steps: StepGraph[];
   clock: Animated.Value | null;
   reverse: boolean;
-  timers: ReturnType<typeof setTimeout>[];
 };
 
 function opacityOf(progress: Animated.Value, stops: { input: number[]; output: number[] }): Axis {
@@ -176,7 +176,6 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
         coveredOpacity: step.coveredStops ? opacityOf(progress, step.coveredStops) : undefined,
       },
     };
-    if (step.mountAt <= 0) attachShifts(graph, step);
     return graph;
   });
   const labelClock = clock ?? steps[steps.length - 1].progress;
@@ -190,7 +189,6 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
     steps,
     clock,
     reverse: false,
-    timers: [],
   };
 }
 
@@ -245,12 +243,6 @@ function stopClocks(session: Session | null, onTarget: (value: number) => void) 
       graph.progress.stopAnimation();
     }
   }
-}
-
-function clearStaging(session: Session | null) {
-  if (!session) return;
-  for (const timer of session.timers) clearTimeout(timer);
-  session.timers = [];
 }
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
@@ -997,7 +989,6 @@ function ChartFrame({
       ),
   ).current;
 
-  const [shown, setShown] = useState<readonly number[]>([]);
   const [phase, setPhase] = useState<Phase>(() => {
     if (bootKind === 'fresh') return { kind: 'live', interval: requested };
     if (!readyAtStart) return { kind: 'empty' };
@@ -1029,6 +1020,7 @@ function ChartFrame({
   const failedRef = useRef<CandleInterval | null>(null);
   const revealedRef = useRef<Animated.Value | null>(null);
   const sessionRef = useRef<Session | null>(null);
+  const { shown, stage, cancel, reset } = useStagedMounts();
   const travelToken = useRef(0);
   const widthRef = useRef(width);
   widthRef.current = width;
@@ -1196,29 +1188,14 @@ function ChartFrame({
   );
 
   const finishTravel = useCallback((interval: CandleInterval) => {
-    clearStaging(sessionRef.current);
+    reset();
     sessionRef.current = null;
-    setShown([]);
     setPinned(null);
     frozenRef.current = null;
     onHoldRef.current(null);
     setCaption(false);
     setPhase({ kind: 'live', interval });
-  }, []);
-
-  const stageSession = useCallback((session: Session) => {
-    const initial = session.plan.steps.flatMap((step, index) => (step.mountAt <= 0 ? [index] : []));
-    setShown(initial);
-    session.plan.steps.forEach((step, index) => {
-      if (step.mountAt <= 0) return;
-      const timer = setTimeout(() => {
-        if (sessionRef.current !== session) return;
-        attachShifts(session.steps[index], step);
-        setShown(current => (current.includes(index) ? current : [...current, index]));
-      }, step.mountAt);
-      session.timers.push(timer);
-    });
-  }, []);
+  }, [reset]);
 
   const onWarm = useCallback(
     (interval: CandleInterval) => {
@@ -1258,7 +1235,7 @@ function ChartFrame({
         const session = current.session;
         if (next === session.plan.from) {
           session.reverse = true;
-          clearStaging(session);
+          cancel();
           onHoldRef.current(null);
           stopClocks(session, value => {
             if (session.clock) session.clock.setValue(value);
@@ -1271,7 +1248,7 @@ function ChartFrame({
           return;
         }
         session.reverse = false;
-        clearStaging(session);
+        cancel();
         stopClocks(session, () => {});
         setPhase({ kind: 'travel-out', session });
         shell.setValue(1);
@@ -1413,7 +1390,9 @@ function ChartFrame({
               const session = buildSession(decided.plan, origin);
               sessionRef.current = session;
               shell.setValue(1);
-              stageSession(session);
+              stage(session.plan.steps, index => {
+                attachShifts(session.steps[index], session.plan.steps[index]);
+              });
               const traveling: Phase = { kind: 'travel', session };
               phaseRef.current = traveling;
               setPhase(traveling);
@@ -1443,7 +1422,7 @@ function ChartFrame({
         scheduleReveal(next);
       }
     },
-    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, stageSession, symbol],
+    [beginFetch, canShow, cancel, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, stage, symbol],
   );
 
   const onLayout = useCallback(() => {
@@ -1482,7 +1461,6 @@ function ChartFrame({
       clearTimeout(wait.current.settle);
       travelToken.current += 1;
       stopClocks(sessionRef.current, () => {});
-      clearStaging(sessionRef.current);
       onHoldRef.current(null);
     },
     [clearTimers],

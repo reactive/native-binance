@@ -423,6 +423,19 @@ it('keeps every pair inside the measured per-update budget', () => {
   }
 });
 
+it('mounts each step before it is first on screen', () => {
+  for (const [a, b] of PAIRS) {
+    for (const [from, to] of [[a, b], [b, a]] as const) {
+      const plan = assume(from, to);
+      for (const step of plan.steps) {
+        if (step.interval === from) expect(step.visibleAt).toBe(0);
+        expect(step.visibleAt).toBeGreaterThanOrEqual(step.mountAt);
+        expect(step.visibleAt).toBeLessThanOrEqual(plan.duration);
+      }
+    }
+  }
+});
+
 it('lists every ladder step once', () => {
   expect(LADDER).toEqual(['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M']);
   expect(PAIRS).toHaveLength(21);
