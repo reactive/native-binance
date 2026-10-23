@@ -1462,10 +1462,9 @@ function ChartFrame({
       clearTimeout(wait.current.settle);
       travelToken.current += 1;
       stopClocks(sessionRef.current, () => {});
-      cancel();
       onHoldRef.current(null);
     },
-    [cancel, clearTimers],
+    [clearTimers],
   );
 
   useEffect(() => {

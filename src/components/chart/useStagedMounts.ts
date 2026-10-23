@@ -13,7 +13,8 @@ export type StepTiming = {
 
 /**
  * Mounts travel steps from their plan timings.
- * `stage` shows the start-commit steps in that turn. `cancel` drops timers and keeps what is already shown.
+ * `stage` shows the start-commit steps in that turn. `cancel` drops timers and pending sliced mounts, and keeps what is
+ * already shown.
  * `reset` drops timers and clears the shown set.
  */
 export function useStagedMounts(): {
@@ -40,14 +41,15 @@ export function useStagedMounts(): {
     (steps: readonly StepTiming[], onMount: (index: number) => void) => {
       clearTimers();
       onMountRef.current = onMount;
-      shownRef.current = [];
       const add = (index: number) => (current: readonly number[]) =>
         current.includes(index) ? current : [...current, index];
       const later = (delay: number, run: () => void) => {
         timers.current.push(setTimeout(run, delay));
       };
-      // The start commit is shown before any sliced mount is queued.
-      setShown(steps.flatMap((step, index) => (step.visibleAt < START_COMMIT_MS ? [index] : [])));
+      // The start commit is shown before any sliced mount is queued. It is urgent, so it commits before any timer.
+      const start = steps.flatMap((step, index) => (step.visibleAt < START_COMMIT_MS ? [index] : []));
+      shownRef.current = start;
+      setShown(start);
       steps.forEach((step, index) => {
         if (step.visibleAt < START_COMMIT_MS) return;
         const mount = () => {
@@ -66,8 +68,10 @@ export function useStagedMounts(): {
     [clearTimers],
   );
 
+  // React applies queued updates in order, so this replacement wins over any sliced mount still pending.
   const cancel = useCallback(() => {
     clearTimers();
+    setShown(shownRef.current);
   }, [clearTimers]);
 
   const reset = useCallback(() => {
@@ -75,7 +79,7 @@ export function useStagedMounts(): {
     setShown([]);
   }, [clearTimers]);
 
-  useEffect(() => () => cancel(), [cancel]);
+  useEffect(() => clearTimers, [clearTimers]);
 
   return { shown, stage, cancel, reset };
 }

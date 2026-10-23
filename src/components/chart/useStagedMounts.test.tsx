@@ -101,6 +101,36 @@ it('keeps the start commit when a later step is cancelled', () => {
   expect(mounted).toEqual([]);
 });
 
+it('drops a sliced mount that is still pending when cancelled', () => {
+  mountHarness();
+  act(() => {
+    harness?.stage(
+      [
+        { mountAt: 0, visibleAt: 0 },
+        { mountAt: 40, visibleAt: 120 },
+      ],
+      () => {},
+    );
+  });
+  act(() => {
+    jest.advanceTimersByTime(40);
+    harness?.cancel();
+  });
+  expect(harness?.shown).toEqual([0]);
+});
+
+it('drops a pending sliced mount from the previous stage', () => {
+  mountHarness();
+  act(() => {
+    harness?.stage([{ mountAt: 40, visibleAt: 120 }], () => {});
+  });
+  act(() => {
+    jest.advanceTimersByTime(40);
+    harness?.stage([{ mountAt: 0, visibleAt: 0 }], () => {});
+  });
+  expect(harness?.shown).toEqual([0]);
+});
+
 it('mounts urgently when the sliced update has not committed', () => {
   const react = jest.requireActual<typeof import('react')>('react');
   const spy = jest.spyOn(react, 'startTransition').mockImplementation(() => {});
