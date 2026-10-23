@@ -2,8 +2,8 @@ import { Text } from '@reactive/silk-native';
 import { memo, type JSX } from 'react';
 import { StyleSheet, View, type TextStyle } from 'react-native';
 
-import { formatClock, formatPrice, formatSize } from '@/components/formatMarket';
-import type { Places } from '@/components/places';
+import { formatClock, formatPrice, formatSize } from '@/components/common/formatMarket';
+import type { Places } from '@/components/symbol/places';
 import type { Trade } from '@/resources/Trade';
 
 export const TRADE_ROW_HEIGHT = 44;

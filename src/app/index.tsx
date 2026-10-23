@@ -3,11 +3,11 @@ import { Heading, useTheme } from '@reactive/silk-native';
 import { Suspense, useEffect, useRef, useState, type JSX } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { LoadError } from '@/components/LoadError';
-import { SafeScreen } from '@/components/SafeScreen';
-import { MarketSkeletonRow } from '@/components/MarketRow';
-import { MarketList, MarketsChrome } from '@/components/MarketsScreen';
-import { TickerFeed } from '@/components/TickerFeed';
+import { LoadError } from '@/components/common/LoadError';
+import { SafeScreen } from '@/components/common/SafeScreen';
+import { MarketSkeletonRow } from '@/components/common/MarketRow';
+import { MarketList, MarketsChrome } from '@/components/markets/MarketsScreen';
+import { TickerFeed } from '@/components/common/TickerFeed';
 import type { MarketSort } from '@/resources/Markets';
 import { getExchangeInfo } from '@/resources/Symbol';
 import { getWatching } from '@/resources/Watching';

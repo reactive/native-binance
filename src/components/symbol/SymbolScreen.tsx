@@ -4,24 +4,24 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 
-import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
-import { SafeScreen } from '@/components/SafeScreen';
-import { DIRECTION_WORD } from '@/components/candleLayout';
-import { InstrumentInfo } from '@/components/InstrumentInfo';
-import { LoadError } from '@/components/LoadError';
-import OrderBookView from '@/components/OrderBookView';
-import { Reconnecting } from '@/components/Reconnecting';
-import { useDismissSearchOnBack } from '@/components/searchBack';
-import { SymbolSearch } from '@/components/SymbolSearch';
-import { TickerFeed } from '@/components/TickerFeed';
-import TradeTape from '@/components/TradeTape';
+import ChartBody, { type ScrubQuote } from '@/components/chart/ChartBody';
+import { SafeScreen } from '@/components/common/SafeScreen';
+import { DIRECTION_WORD } from '@/components/chart/candleLayout';
+import { InstrumentInfo } from '@/components/symbol/InstrumentInfo';
+import { LoadError } from '@/components/common/LoadError';
+import OrderBookView from '@/components/symbol/OrderBookView';
+import { Reconnecting } from '@/components/common/Reconnecting';
+import { useDismissSearchOnBack } from '@/components/symbol/searchBack';
+import { SymbolSearch } from '@/components/symbol/SymbolSearch';
+import { TickerFeed } from '@/components/common/TickerFeed';
+import TradeTape from '@/components/symbol/TradeTape';
 import {
   decimalsOf,
   formatCandleTime,
   formatPercent,
   formatPrice,
   formatQuoteVolume,
-} from '@/components/formatMarket';
+} from '@/components/common/formatMarket';
 import type { CandleInterval } from '@/resources/Candle';
 import { getOrderBook } from '@/resources/OrderBook';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';

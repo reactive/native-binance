@@ -10,8 +10,8 @@ import {
   type ListRenderItem,
 } from 'react-native';
 
-import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
-import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
+import { holdOrder, idleHold, type HoldEvent } from '@/components/common/holdOrder';
+import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/common/MarketRow';
 import { findSymbols, searchKey } from '@/resources/Markets';
 
 const TOP_BAR = 48;

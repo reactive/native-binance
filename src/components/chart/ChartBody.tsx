@@ -27,7 +27,7 @@ import {
   type TextStyle,
 } from 'react-native';
 
-import { useScreenInsets } from '@/components/screenInsets';
+import { useScreenInsets } from '@/components/common/screenInsets';
 import {
   cachedListReady,
   CAPTION_DELAY_MS,
@@ -39,7 +39,7 @@ import {
   intervalLabel,
   periodStart,
   revealAt,
-} from '@/components/chartMotion';
+} from '@/components/chart/chartMotion';
 import {
   labelStops,
   placeCandles,
@@ -51,9 +51,9 @@ import {
   type StepPlan,
   type TravelCandle,
   type TravelPlan,
-} from '@/components/chartTravel';
-import { LoadError } from '@/components/LoadError';
-import { Pill } from '@/components/Pill';
+} from '@/components/chart/chartTravel';
+import { LoadError } from '@/components/common/LoadError';
+import { Pill } from '@/components/common/Pill';
 import {
   candleIndexAt,
   candleLayout,
@@ -68,8 +68,8 @@ import {
   plotDeviceShift,
   plotSize,
   READOUT,
-} from '@/components/candleLayout';
-import { decimalsOf, formatCandleTime, formatPrice } from '@/components/formatMarket';
+} from '@/components/chart/candleLayout';
+import { decimalsOf, formatCandleTime, formatPrice } from '@/components/common/formatMarket';
 import { Candle, getCandles, INTERVALS, type CandleInterval } from '@/resources/Candle';
 import { MarketSymbol } from '@/resources/Symbol';
 

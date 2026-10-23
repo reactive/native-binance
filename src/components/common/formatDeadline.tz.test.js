@@ -8,7 +8,7 @@ it('formats a future deadline in America/New_York and a past one without the tim
       '--experimental-strip-types',
       '--input-type=module',
       '-e',
-      `import { formatDeadline } from './src/components/formatDeadline.ts';
+      `import { formatDeadline } from './src/components/common/formatDeadline.ts';
       const NOW = Date.parse('2026-09-23T15:00:00.000Z');
       const got = [
         formatDeadline(new Date('2026-09-24T03:00:00.000Z'), NOW),
@@ -18,7 +18,7 @@ it('formats a future deadline in America/New_York and a past one without the tim
       process.stdout.write(JSON.stringify(got));`,
     ],
     {
-      cwd: path.resolve(__dirname, '../..'),
+      cwd: path.resolve(__dirname, '../../..'),
       env: { ...process.env, TZ: 'America/New_York' },
       encoding: 'utf8',
     },

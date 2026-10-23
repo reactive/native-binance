@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 
-import { decimalsOf } from '@/components/formatMarket';
+import { decimalsOf } from '@/components/common/formatMarket';
 
 export type Places = { readonly price: number; readonly size: number };
 export type PlacesLock = { readonly price?: number; readonly size?: number };

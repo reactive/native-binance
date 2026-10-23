@@ -6,10 +6,10 @@ import { AccessibilityInfo, Animated, Dimensions, PixelRatio, StyleSheet } from 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
-import ChartBody, { type ScrubQuote } from '@/components/ChartBody';
-import { candleIndexAt } from '@/components/candleLayout';
-import { intervalMs, periodStart } from '@/components/chartMotion';
-import { formatCandleTime } from '@/components/formatMarket';
+import ChartBody, { type ScrubQuote } from '@/components/chart/ChartBody';
+import { candleIndexAt } from '@/components/chart/candleLayout';
+import { intervalMs, periodStart } from '@/components/chart/chartMotion';
+import { formatCandleTime } from '@/components/common/formatMarket';
 import { getCandles, upsertCandle, type CandleInterval } from '@/resources/Candle';
 import CandleStream from '@/resources/CandleStream';
 import { FakeSocket, installFakeSocket } from '@/resources/testSocket';

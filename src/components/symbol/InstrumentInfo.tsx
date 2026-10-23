@@ -3,8 +3,8 @@ import { Badge, Text, useTheme } from '@reactive/silk-native';
 import type { JSX, ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, type TextStyle } from 'react-native';
 
-import { AssetSection } from '@/components/AssetInfo';
-import { trimDecimal } from '@/components/formatMarket';
+import { AssetSection } from '@/components/symbol/AssetInfo';
+import { trimDecimal } from '@/components/common/formatMarket';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 
 const ROW_HEIGHT = 48;

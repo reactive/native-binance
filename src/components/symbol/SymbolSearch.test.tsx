@@ -3,7 +3,7 @@ import { mockInitialState } from '@data-client/test';
 import { BackHandler } from 'react-native';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
-import { SymbolSearch } from '@/components/SymbolSearch';
+import { SymbolSearch } from '@/components/symbol/SymbolSearch';
 import { getExchangeInfo } from '@/resources/Symbol';
 import { actWrite } from '@/resources/testSupport';
 import { getTickers, Ticker } from '@/resources/Ticker';

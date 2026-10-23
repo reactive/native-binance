@@ -5,8 +5,8 @@ import { SilkProvider } from '@reactive/silk-native';
 import { Platform, StyleSheet } from 'react-native';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
-import { formatDeadline } from '@/components/formatDeadline';
-import { InstrumentInfo } from '@/components/InstrumentInfo';
+import { formatDeadline } from '@/components/common/formatDeadline';
+import { InstrumentInfo } from '@/components/symbol/InstrumentInfo';
 import { getAssetProfile, getAssets } from '@/resources/Asset';
 import { getExchangeInfo } from '@/resources/Symbol';
 

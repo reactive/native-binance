@@ -3,7 +3,7 @@ import type { Manager } from '@data-client/react';
 import { MockResolver, renderDataHook, renderHook } from '@data-client/test';
 import { act, type ReactNode } from 'react';
 
-import { TickerFeed } from '@/components/TickerFeed';
+import { TickerFeed } from '@/components/common/TickerFeed';
 
 import { getCandles } from './Candle';
 import { getOrderBook } from './OrderBook';

@@ -1,6 +1,6 @@
 import { renderHook, act } from '@data-client/test';
 
-import { useStreamsDown } from '@/components/Reconnecting';
+import { useStreamsDown } from '@/components/common/Reconnecting';
 import { streamStatus } from '@/resources/streamStatus';
 
 jest.mock('@reactive/silk-native', () => ({

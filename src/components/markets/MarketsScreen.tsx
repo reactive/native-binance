@@ -10,10 +10,10 @@ import {
   type ListRenderItem,
 } from 'react-native';
 
-import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
-import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
-import { Pill } from '@/components/Pill';
-import { Reconnecting } from '@/components/Reconnecting';
+import { holdOrder, idleHold, type HoldEvent } from '@/components/common/holdOrder';
+import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/common/MarketRow';
+import { Pill } from '@/components/common/Pill';
+import { Reconnecting } from '@/components/common/Reconnecting';
 import { getMarkets, MARKET_QUOTES, type MarketSort } from '@/resources/Markets';
 import { TICKER_STREAM } from '@/resources/streams';
 
