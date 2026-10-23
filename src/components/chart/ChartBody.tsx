@@ -176,7 +176,6 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
         coveredOpacity: step.coveredStops ? opacityOf(progress, step.coveredStops) : undefined,
       },
     };
-    if (step.mountAt <= 0) attachShifts(graph, step);
     return graph;
   });
   const labelClock = clock ?? steps[steps.length - 1].progress;

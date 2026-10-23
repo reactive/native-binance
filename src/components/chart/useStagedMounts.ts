@@ -6,6 +6,10 @@ export const START_COMMIT_MS = 50;
 /** A step whose time-sliced mount has not committed by this long before it is on screen mounts urgently. */
 export const URGENT_LEAD_MS = 34;
 
+function add(index: number) {
+  return (current: readonly number[]) => (current.includes(index) ? current : [...current, index]);
+}
+
 export type StepTiming = {
   mountAt: number;
   visibleAt: number;
@@ -26,7 +30,6 @@ export function useStagedMounts(): {
   const [shown, setShown] = useState<readonly number[]>([]);
   const shownRef = useRef(shown);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const onMountRef = useRef<(index: number) => void>(() => {});
 
   useLayoutEffect(() => {
     shownRef.current = shown;
@@ -40,30 +43,35 @@ export function useStagedMounts(): {
   const stage = useCallback(
     (steps: readonly StepTiming[], onMount: (index: number) => void) => {
       clearTimers();
-      onMountRef.current = onMount;
-      const add = (index: number) => (current: readonly number[]) =>
-        current.includes(index) ? current : [...current, index];
-      const later = (delay: number, run: () => void) => {
-        timers.current.push(setTimeout(run, delay));
+      const attached = new Set<number>();
+      const attach = (index: number) => {
+        if (attached.has(index)) return;
+        attached.add(index);
+        onMount(index);
       };
-      // The start commit is shown before any sliced mount is queued. It is urgent, so it commits before any timer.
-      const start = steps.flatMap((step, index) => (step.visibleAt < START_COMMIT_MS ? [index] : []));
+      const start: number[] = [];
+      const sliced: number[] = [];
+      steps.forEach((step, index) => (step.visibleAt < START_COMMIT_MS ? start : sliced).push(index));
+      start.forEach(attach);
+      // The start commit is a replacement, so it is queued before any sliced mount it would otherwise drop.
       shownRef.current = start;
       setShown(start);
-      steps.forEach((step, index) => {
-        if (step.visibleAt < START_COMMIT_MS) return;
+      for (const index of sliced) {
+        const { mountAt, visibleAt } = steps[index];
         const mount = () => {
-          onMountRef.current(index);
+          attach(index);
           startTransition(() => setShown(add(index)));
         };
-        if (step.mountAt <= 0) mount();
-        else later(step.mountAt, mount);
-        later(step.visibleAt - URGENT_LEAD_MS, () => {
-          if (shownRef.current.includes(index)) return;
-          onMountRef.current(index);
-          setShown(add(index));
-        });
-      });
+        if (mountAt <= 0) mount();
+        else timers.current.push(setTimeout(mount, mountAt));
+        timers.current.push(
+          setTimeout(() => {
+            if (shownRef.current.includes(index)) return;
+            attach(index);
+            setShown(add(index));
+          }, visibleAt - URGENT_LEAD_MS),
+        );
+      }
     },
     [clearTimers],
   );
