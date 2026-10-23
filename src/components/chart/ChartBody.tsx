@@ -52,6 +52,7 @@ import {
   type TravelCandle,
   type TravelPlan,
 } from '@/components/chart/chartTravel';
+import { MotionView } from '@/components/chart/MotionView';
 import { LoadError } from '@/components/common/LoadError';
 import { Pill } from '@/components/common/Pill';
 import {
@@ -104,6 +105,8 @@ type Axis = Animated.AnimatedInterpolation<number>;
 type Shift = ReturnType<typeof Animated.subtract>;
 
 type PlotMotion = {
+  /** Drives every axis below. */
+  clock: Animated.Value;
   scaleX: Axis;
   translateX: Axis;
   scaleY: Axis;
@@ -162,6 +165,7 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
       readoutOpacity: opacityOf(progress, step.readout),
       shifts,
       motion: {
+        clock: progress,
         scaleX: progress.interpolate({ ...range, outputRange: step.scaleX }),
         translateX: progress.interpolate({ ...range, outputRange: step.translateX }),
         scaleY: progress.interpolate({ ...range, outputRange: step.scaleY }),
@@ -555,7 +559,7 @@ const CandleMarks = memo(function CandleMarks({
         const tx = motion?.shifts?.get(candle.openTime);
         const covered = motion?.covered?.has(candle.openTime) === true;
         return (
-          <Animated.View
+          <MotionView
             key={candle.openTime}
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
@@ -568,10 +572,13 @@ const CandleMarks = memo(function CandleMarks({
                 width: metrics.wick,
                 height: Math.round(item.wickHeight * ratio),
                 backgroundColor: color,
-                opacity: covered ? motion?.coveredOpacity : 1,
-                transform: tx ? [{ translateX: tx }] : undefined,
               },
             ]}
+            clock={motion?.clock}
+            motion={{
+              opacity: covered ? motion?.coveredOpacity : undefined,
+              transform: tx ? [{ translateX: tx }] : undefined,
+            }}
           >
             <View
               testID={newest ? 'candle-last' : undefined}
@@ -596,7 +603,7 @@ const CandleMarks = memo(function CandleMarks({
                 ]}
               />
             : null}
-          </Animated.View>
+          </MotionView>
         );
       })}
     </>
@@ -652,17 +659,17 @@ const CandlePlot = memo(function CandlePlot({
     if (candle.high > seriesHigh) seriesHigh = candle.high;
     if (candle.low < seriesLow) seriesLow = candle.low;
   }
-  const labelStyle = motion?.labelOpacity ? { opacity: motion.labelOpacity } : undefined;
+  const labelMotion = { opacity: motion?.labelOpacity };
   const scrubbed = scrubIndex != null ? placed[scrubIndex] : undefined;
   const scrubCandle = scrubbed && scrubIndex != null ? candles[scrubIndex] : undefined;
 
   return (
     <>
-      <Animated.View
+      <MotionView
         pointerEvents="none"
-        style={{
-          width,
-          height,
+        style={{ width, height }}
+        clock={motion?.clock}
+        motion={{
           opacity: motion?.layerOpacity,
           transform: motion
             ? [
@@ -712,22 +719,22 @@ const CandlePlot = memo(function CandlePlot({
             />
           : null}
         </View>
-      </Animated.View>
+      </MotionView>
       {showLabels ?
         <>
           <View pointerEvents="none" style={[styles.band, styles.bandTop]}>
-            <Animated.View style={labelStyle}>
+            <MotionView clock={motion?.clock} motion={labelMotion}>
               <Text role="caption" tone="secondary" style={TABULAR} testID="series-high">
                 {formatPrice(seriesHigh, places)}
               </Text>
-            </Animated.View>
+            </MotionView>
           </View>
           <View pointerEvents="none" style={[styles.band, styles.bandBottom]}>
-            <Animated.View style={labelStyle}>
+            <MotionView clock={motion?.clock} motion={labelMotion}>
               <Text role="caption" tone="secondary" style={TABULAR} testID="series-low">
                 {formatPrice(seriesLow, places)}
               </Text>
-            </Animated.View>
+            </MotionView>
           </View>
         </>
       : null}
