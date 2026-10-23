@@ -2,19 +2,13 @@ import type { Animated, ViewProps } from 'react-native';
 
 type Motion = Animated.AnimatedNode;
 
-/** The animated part of a view's style: opacity, and transforms in RN order. */
-export type MotionStyle = {
-  opacity?: Motion;
-  transform?: readonly (
-    | { translateX: Motion }
-    | { translateY: Motion }
-    | { scaleX: Motion }
-    | { scaleY: Motion }
-  )[];
-};
-
+/** Animated opacity and transforms. Transforms apply in this order: translateX, translateY, scaleX, scaleY. */
 export type MotionViewProps = ViewProps & {
-  /** Drives every node in `motion`. Web redraws on its ticks; native ignores it. */
+  /** The value every motion node is derived from. Web redraws on its ticks. */
   clock?: Animated.Value;
-  motion: MotionStyle;
+  opacity?: Motion;
+  translateX?: Motion;
+  translateY?: Motion;
+  scaleX?: Motion;
+  scaleY?: Motion;
 };

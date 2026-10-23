@@ -1,36 +1,47 @@
 import { useLayoutEffect, useRef, type JSX } from 'react';
 import { View } from 'react-native';
 
-import type { MotionStyle, MotionViewProps } from '@/components/chart/motionStyle';
+import type { MotionViewProps } from '@/components/chart/motionStyle';
+
+type Motion = MotionViewProps['opacity'];
 
 /** The JS driver's current value. Animated has no public sync read for derived nodes. */
-function valueOf(node: MotionStyle['opacity']): number {
+function valueOf(node: NonNullable<Motion>): number {
   return (node as unknown as { __getValue(): number }).__getValue();
-}
-
-function cssTransform(transform: NonNullable<MotionStyle['transform']>): string {
-  return transform
-    .map(entry => {
-      const [name, node] = Object.entries(entry)[0];
-      return name.startsWith('scale') ? `${name}(${valueOf(node)})` : `${name}(${valueOf(node)}px)`;
-    })
-    .join(' ');
 }
 
 /**
  * Web: react-native-web's Animated re-renders every animated view through React on each frame.
- * This view writes `motion` to the DOM on each `clock` tick instead, in the same frame, with no render.
+ * This view writes its motion to the DOM on each `clock` tick instead, in the same frame, with no render.
  */
-export function MotionView({ clock, motion, ...view }: MotionViewProps): JSX.Element {
+export function MotionView({
+  clock,
+  opacity,
+  translateX,
+  translateY,
+  scaleX,
+  scaleY,
+  ...view
+}: MotionViewProps): JSX.Element {
   const ref = useRef<HTMLElement | null>(null);
-  const { opacity, transform } = motion;
 
   useLayoutEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    const axes = [
+      ['translateX', translateX, 'px'],
+      ['translateY', translateY, 'px'],
+      ['scaleX', scaleX, ''],
+      ['scaleY', scaleY, ''],
+    ] as const;
+    const moving = axes.filter(([, node]) => node);
+    if (!element || (!opacity && moving.length === 0)) return;
     const draw = () => {
       if (opacity) element.style.opacity = String(valueOf(opacity));
-      if (transform) element.style.transform = cssTransform(transform);
+      if (moving.length > 0) {
+        element.style.transform = moving
+          .map(([name, node, unit]) => `${name}(${valueOf(node!)}${unit})`)
+          .join(' ');
+      }
     };
     draw();
     const id = clock?.addListener(draw);
@@ -39,7 +50,7 @@ export function MotionView({ clock, motion, ...view }: MotionViewProps): JSX.Ele
       element.style.opacity = '';
       element.style.transform = '';
     };
-  }, [clock, opacity, transform]);
+  }, [clock, opacity, translateX, translateY, scaleX, scaleY]);
 
   return <View {...view} ref={ref as never} />;
 }

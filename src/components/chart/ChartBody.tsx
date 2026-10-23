@@ -105,7 +105,7 @@ type Axis = Animated.AnimatedInterpolation<number>;
 type Shift = ReturnType<typeof Animated.subtract>;
 
 type PlotMotion = {
-  /** Drives every axis below. */
+  /** This step's progress. On web it is the shared clock, which also drives `labelOpacity`. */
   clock: Animated.Value;
   scaleX: Axis;
   translateX: Axis;
@@ -575,10 +575,8 @@ const CandleMarks = memo(function CandleMarks({
               },
             ]}
             clock={motion?.clock}
-            motion={{
-              opacity: covered ? motion?.coveredOpacity : undefined,
-              transform: tx ? [{ translateX: tx }] : undefined,
-            }}
+            opacity={covered ? motion?.coveredOpacity : undefined}
+            translateX={tx}
           >
             <View
               testID={newest ? 'candle-last' : undefined}
@@ -659,7 +657,6 @@ const CandlePlot = memo(function CandlePlot({
     if (candle.high > seriesHigh) seriesHigh = candle.high;
     if (candle.low < seriesLow) seriesLow = candle.low;
   }
-  const labelMotion = { opacity: motion?.labelOpacity };
   const scrubbed = scrubIndex != null ? placed[scrubIndex] : undefined;
   const scrubCandle = scrubbed && scrubIndex != null ? candles[scrubIndex] : undefined;
 
@@ -669,17 +666,11 @@ const CandlePlot = memo(function CandlePlot({
         pointerEvents="none"
         style={{ width, height }}
         clock={motion?.clock}
-        motion={{
-          opacity: motion?.layerOpacity,
-          transform: motion
-            ? [
-                { translateX: motion.translateX },
-                { translateY: motion.translateY },
-                { scaleX: motion.scaleX },
-                { scaleY: motion.scaleY },
-              ]
-            : undefined,
-        }}
+        opacity={motion?.layerOpacity}
+        translateX={motion?.translateX}
+        translateY={motion?.translateY}
+        scaleX={motion?.scaleX}
+        scaleY={motion?.scaleY}
       >
         <View
           pointerEvents="none"
@@ -723,14 +714,14 @@ const CandlePlot = memo(function CandlePlot({
       {showLabels ?
         <>
           <View pointerEvents="none" style={[styles.band, styles.bandTop]}>
-            <MotionView clock={motion?.clock} motion={labelMotion}>
+            <MotionView clock={motion?.clock} opacity={motion?.labelOpacity}>
               <Text role="caption" tone="secondary" style={TABULAR} testID="series-high">
                 {formatPrice(seriesHigh, places)}
               </Text>
             </MotionView>
           </View>
           <View pointerEvents="none" style={[styles.band, styles.bandBottom]}>
-            <MotionView clock={motion?.clock} motion={labelMotion}>
+            <MotionView clock={motion?.clock} opacity={motion?.labelOpacity}>
               <Text role="caption" tone="secondary" style={TABULAR} testID="series-low">
                 {formatPrice(seriesLow, places)}
               </Text>
@@ -852,14 +843,13 @@ function TravelReadout({ symbol, session }: { symbol: string; session: Session }
                 const candle = step.candles[step.candles.length - 1];
                 if (!candle) return null;
                 return (
-                  <Animated.View
+                  <MotionView
                     key={step.interval}
                     accessibilityElementsHidden
                     importantForAccessibility="no-hide-descendants"
-                    style={[
-                      index === 0 ? null : styles.readoutLayer,
-                      { opacity: session.steps[index].readoutOpacity },
-                    ]}
+                    style={index === 0 ? null : styles.readoutLayer}
+                    clock={session.steps[index].progress}
+                    opacity={session.steps[index].readoutOpacity}
                   >
                     <Text
                       role="caption"
@@ -869,7 +859,7 @@ function TravelReadout({ symbol, session }: { symbol: string; session: Session }
                     >
                       {formatPrice(price(candle, label), places)}
                     </Text>
-                  </Animated.View>
+                  </MotionView>
                 );
               })}
             </View>
