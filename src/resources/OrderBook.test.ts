@@ -91,9 +91,11 @@ it('merges a depth diff and ignores stale or gapped updates', async () => {
   expect(result.current.asks).toEqual([[91, 1]]);
 });
 
+function levels(from: number, step: number, count: number, qty = '1') {
+  return Array.from({ length: count }, (_, i) => [String(from + i * step), qty]);
+}
+
 it('keeps the levels nearest the spread and reuses unchanged ones', async () => {
-  const levels = (from: number, step: number, count: number) =>
-    Array.from({ length: count }, (_, i) => [String(from + i * step), '1']);
   const { result, controller } = mount({
     lastUpdateId: 10,
     bids: levels(1000, -1, 100),
@@ -120,7 +122,7 @@ it('keeps the levels nearest the spread and reuses unchanged ones', async () => 
 it('keeps live levels past the snapshot when nearer ones are removed', async () => {
   const { result, controller } = mount({
     lastUpdateId: 10,
-    bids: Array.from({ length: 100 }, (_, i) => [String(1000 - i), '1']),
+    bids: levels(1000, -1, 100),
     asks: [['1001', '1']],
   });
 
@@ -128,9 +130,20 @@ it('keeps live levels past the snapshot when nearer ones are removed', async () 
   await setBook(controller, {
     U: 12,
     u: 12,
-    b: Array.from({ length: 100 }, (_, i) => [String(1001 - i), '0']),
+    b: levels(1001, -1, 100, '0'),
     a: [],
   });
 
   expect(result.current.bids).toEqual([[901, 1]]);
+});
+
+it('keeps the same side when a full one only gets levels past its deepest', async () => {
+  const { result, controller } = mount({ lastUpdateId: 10, bids: [], asks: levels(1001, 1, 100) });
+  await setBook(controller, { U: 11, u: 11, b: levels(1000, -1, BOOK_DEPTH), a: [] });
+  const full = result.current.bids;
+
+  await setBook(controller, { U: 12, u: 12, b: [['0.5', '5']], a: [['5000', '0']] });
+
+  expect(result.current.lastUpdateId).toBe(12);
+  expect(result.current.bids).toBe(full);
 });

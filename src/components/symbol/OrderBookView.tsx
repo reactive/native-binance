@@ -129,6 +129,15 @@ function keyExtractor(level: Level): string {
   return String(level[0]);
 }
 
+const LIST_PROPS = {
+  keyExtractor,
+  getItemLayout,
+  initialNumToRender: FIRST_ROWS,
+  maxToRenderPerBatch: FIRST_ROWS,
+  windowSize: WINDOW_SCREENS,
+  showsVerticalScrollIndicator: false,
+} as const;
+
 export function OrderBookView({
   symbol,
   bids,
@@ -248,12 +257,7 @@ export function OrderBookView({
         data={asks}
         inverted
         renderItem={renderAsk}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        initialNumToRender={FIRST_ROWS}
-        maxToRenderPerBatch={FIRST_ROWS}
-        windowSize={WINDOW_SCREENS}
-        showsVerticalScrollIndicator={false}
+        {...LIST_PROPS}
       />
 
       {axis}
@@ -263,12 +267,7 @@ export function OrderBookView({
         style={styles.list}
         data={bids}
         renderItem={renderBid}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        initialNumToRender={FIRST_ROWS}
-        maxToRenderPerBatch={FIRST_ROWS}
-        windowSize={WINDOW_SCREENS}
-        showsVerticalScrollIndicator={false}
+        {...LIST_PROPS}
       />
     </View>
   );

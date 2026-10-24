@@ -137,7 +137,7 @@ export class OrderBook extends Entity {
 /**
  * Applies a diff and keeps the `BOOK_DEPTH` levels nearest the spread. The diff stream covers the
  * whole book, so without a bound every level it ever touched would pile up and be re-sorted.
- * Unchanged levels keep their tuples.
+ * Unchanged levels keep their tuples, so a diff allocates only what it changed.
  */
 function mergeLevels(
   levels: readonly Level[],
@@ -145,6 +145,10 @@ function mergeLevels(
   descending: boolean,
 ): Level[] {
   if (!updates.length) return levels as Level[];
+  // A full side ignores new levels past its deepest one, so a diff out there keeps the same array.
+  const deepest = levels.length >= BOOK_DEPTH ? levels[BOOK_DEPTH - 1][0] : undefined;
+  const pastDeepest = (price: number) =>
+    deepest !== undefined && (descending ? price < deepest : price > deepest);
   const byPrice = new Map<number, Level>();
   for (const level of levels) byPrice.set(level[0], level);
   let changed = false;
@@ -152,7 +156,7 @@ function mergeLevels(
     const [price, qty] = update;
     if (qty === 0) {
       if (byPrice.delete(price)) changed = true;
-    } else if (byPrice.get(price)?.[1] !== qty) {
+    } else if (byPrice.get(price)?.[1] !== qty && !pastDeepest(price)) {
       byPrice.set(price, update);
       changed = true;
     }
