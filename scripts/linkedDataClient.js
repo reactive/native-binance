@@ -16,12 +16,20 @@ function isBare(request) {
   return !request.startsWith('.') && !path.isAbsolute(request);
 }
 
-// True when `request`, imported from `fromPath`, should resolve from `root`.
-function resolvesFromRoot(fromPath, request) {
-  return (
-    isBare(request) &&
-    packageDirs.some(dir => fromPath.startsWith(dir + path.sep))
-  );
+function isLinked(fromPath) {
+  return packageDirs.some(dir => fromPath.startsWith(dir + path.sep));
 }
 
-module.exports = { root, packageDirs, resolvesFromRoot };
+// Resolves a bare `request` imported from a linked package as if this app
+// imported it. A dependency only the unreleased checkout has falls back to
+// the package's own location. `resolve(fromRoot)` does the resolving.
+function resolveLinked(fromPath, request, resolve) {
+  if (!isBare(request) || !isLinked(fromPath)) return resolve(false);
+  try {
+    return resolve(true);
+  } catch {
+    return resolve(false);
+  }
+}
+
+module.exports = { root, packageDirs, resolveLinked };

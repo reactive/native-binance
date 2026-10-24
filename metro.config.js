@@ -3,7 +3,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 const path = require('node:path');
 
 const { enhanceMiddleware } = require('./binanceDevProxy');
-const { packageDirs, resolvesFromRoot } = require('./scripts/linkedDataClient');
+const { packageDirs, resolveLinked } = require('./scripts/linkedDataClient');
 
 const config = getDefaultConfig(__dirname);
 
@@ -20,12 +20,12 @@ if (packageDirs.length) {
   const prior = config.resolver.resolveRequest;
   config.resolver.resolveRequest = (context, moduleName, platform) => {
     const next = prior ?? context.resolveRequest;
-    return next(
-      resolvesFromRoot(context.originModulePath, moduleName)
-        ? { ...context, originModulePath: path.join(__dirname, 'package.json') }
-        : context,
-      moduleName,
-      platform,
+    const fromRoot = {
+      ...context,
+      originModulePath: path.join(__dirname, 'package.json'),
+    };
+    return resolveLinked(context.originModulePath, moduleName, useRoot =>
+      next(useRoot ? fromRoot : context, moduleName, platform),
     );
   };
 }
