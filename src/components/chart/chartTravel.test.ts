@@ -389,6 +389,12 @@ it('falls back when a gate fails', () => {
   if (!edge.ok) expect(edge.reason).toBe('edge');
 });
 
+it('travels on the light plan when every plan is over budget', () => {
+  const decided = planTravel(input('1m', '1M', { origin: build('1m', 300), target: build('1M', 300, NOW, 3) }));
+  if (!decided.ok) throw new Error(decided.reason);
+  expect(decided.plan.peakViews * UPDATE_US).toBeGreaterThan(UPDATE_BUDGET_US);
+});
+
 it('keeps every pair inside the measured per-update budget', () => {
   const clock = new Animated.Value(0);
   const count = 240;

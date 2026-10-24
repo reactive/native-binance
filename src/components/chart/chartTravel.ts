@@ -19,6 +19,7 @@ const FIVE_MIN = 5 * 60_000;
  * 8µs leaves room for a slower native prop update and still fits the attached peaks in 2ms.
  */
 export const UPDATE_US = 8;
+/** Picks the full, staged, or light plan. Not a cap: over it, the light plan still travels. */
 export const UPDATE_BUDGET_US = 2000;
 const STAGING_LEAD_MS = 150;
 const STAGING_LEAD_TIGHT_MS = 80;
