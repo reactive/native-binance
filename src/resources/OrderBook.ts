@@ -145,10 +145,6 @@ function mergeLevels(
   descending: boolean,
 ): Level[] {
   if (!updates.length) return levels as Level[];
-  // A full side ignores new levels past its deepest one, so a diff out there keeps the same array.
-  const deepest = levels.length >= BOOK_DEPTH ? levels[BOOK_DEPTH - 1][0] : undefined;
-  const pastDeepest = (price: number) =>
-    deepest !== undefined && (descending ? price < deepest : price > deepest);
   const byPrice = new Map<number, Level>();
   for (const level of levels) byPrice.set(level[0], level);
   let changed = false;
@@ -156,7 +152,7 @@ function mergeLevels(
     const [price, qty] = update;
     if (qty === 0) {
       if (byPrice.delete(price)) changed = true;
-    } else if (byPrice.get(price)?.[1] !== qty && !pastDeepest(price)) {
+    } else if (byPrice.get(price)?.[1] !== qty) {
       byPrice.set(price, update);
       changed = true;
     }
@@ -165,6 +161,10 @@ function mergeLevels(
   const next = Array.from(byPrice.values());
   next.sort((a, b) => (descending ? b[0] - a[0] : a[0] - b[0]));
   if (next.length > BOOK_DEPTH) next.length = BOOK_DEPTH;
+  // A diff that only touched levels past a full side's depth keeps the same array, so the list skips it.
+  if (next.length === levels.length && next.every((level, i) => level === levels[i])) {
+    return levels as Level[];
+  }
   return next;
 }
 

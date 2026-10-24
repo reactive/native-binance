@@ -147,3 +147,17 @@ it('keeps the same side when a full one only gets levels past its deepest', asyn
   expect(result.current.lastUpdateId).toBe(12);
   expect(result.current.bids).toBe(full);
 });
+
+it('takes a deeper level from the same diff that empties a full side', async () => {
+  const { result, controller } = mount({ lastUpdateId: 10, bids: [], asks: levels(1001, 1, 100) });
+  await setBook(controller, { U: 11, u: 11, b: levels(1000, -1, BOOK_DEPTH), a: [] });
+
+  await setBook(controller, {
+    U: 12,
+    u: 12,
+    b: [...levels(1000, -1, BOOK_DEPTH, '0'), ['0.5', '7']],
+    a: [],
+  });
+
+  expect(result.current.bids).toEqual([[0.5, 7]]);
+});
