@@ -1,12 +1,11 @@
-import { Text, useTheme } from '@reactive/silk-native';
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { Text, useReducedMotion, useTheme } from '@reactive/silk-native';
+import { memo, useEffect, useMemo, useState, type JSX } from 'react';
 import { Animated, Easing, PixelRatio, StyleSheet, View } from 'react-native';
 
 import { candleLayout, candleMetrics, PLOT_PAD } from '@/components/chart/candleLayout';
 import { easeIn, FADE_IN_MS } from '@/components/chart/chartMotion';
-import { MotionView } from '@/components/chart/MotionView';
-import { NATIVE_DRIVER } from '@/components/chart/motionStyle';
-import { useReduceMotion } from '@/components/common/useReduceMotion';
+import { MotionView } from '@/components/common/MotionView';
+import { NATIVE_DRIVER } from '@/components/common/motionStyle';
 import { CANDLE_LIMIT } from '@/resources/Candle';
 
 /** One crest crossing the plot, then a rest before the next. */
@@ -50,7 +49,7 @@ function crestAt(clock: Animated.Value, at: number) {
  * Ghost candles where the series will draw, with a light sweeping across them.
  * Fills its parent; the parent sets the plot size.
  */
-export function ChartSkeleton({
+export const ChartSkeleton = memo(function ChartSkeleton({
   width,
   height,
   appear = false,
@@ -61,9 +60,9 @@ export function ChartSkeleton({
   appear?: boolean;
 }): JSX.Element {
   const { theme } = useTheme();
-  const reduce = useReduceMotion();
+  const reduce = useReducedMotion();
   const clock = useState(() => new Animated.Value(0))[0];
-  const enter = useState(() => new Animated.Value(appear ? 0 : 1))[0];
+  const enter = useState(() => new Animated.Value(0))[0];
   const still = useState(() => new Animated.Value(GHOST_OPACITY))[0];
   const ratio = PixelRatio.get();
   const placed = useMemo(() => candleLayout(GHOST, { width, height, ratio }), [height, ratio, width]);
@@ -154,7 +153,7 @@ export function ChartSkeleton({
       ))}
     </MotionView>
   );
-}
+});
 
 /** Loading caption in the plot's top band, announced to screen readers. */
 export function PlotCaption({ children, testID }: { children: string; testID?: string }): JSX.Element {

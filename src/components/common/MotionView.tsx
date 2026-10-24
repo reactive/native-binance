@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { Animated } from 'react-native';
 
-import type { MotionViewProps } from '@/components/chart/motionStyle';
+import type { MotionViewProps } from '@/components/common/motionStyle';
 
 /** Native: an `Animated.View`, so the native driver moves it off the JS thread. */
 export function MotionView({

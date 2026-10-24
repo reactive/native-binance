@@ -15,24 +15,22 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ComponentType,
   type JSX,
-  type ReactNode,
 } from 'react';
 import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 
 import ChartBody, { ChartLoading, type ScrubQuote } from '@/components/chart/ChartBody';
 import { SafeScreen } from '@/components/common/SafeScreen';
 import { DIRECTION_WORD } from '@/components/chart/candleLayout';
-import { INFO_ROW_HEIGHT, InstrumentInfo } from '@/components/symbol/InstrumentInfo';
-import { ListSkeleton } from '@/components/common/ListSkeleton';
+import { InfoLoading, InstrumentInfo } from '@/components/symbol/InstrumentInfo';
 import { LoadError } from '@/components/common/LoadError';
-import OrderBookView, { BOOK_ROW_HEIGHT } from '@/components/symbol/OrderBookView';
+import OrderBookView, { BookLoading } from '@/components/symbol/OrderBookView';
 import { Reconnecting } from '@/components/common/Reconnecting';
 import { useDismissSearchOnBack } from '@/components/symbol/searchBack';
 import { SymbolSearch } from '@/components/symbol/SymbolSearch';
 import { TickerFeed } from '@/components/common/TickerFeed';
-import { TRADE_ROW_HEIGHT } from '@/components/symbol/TradeRow';
-import TradeTape from '@/components/symbol/TradeTape';
+import TradeTape, { TradesLoading } from '@/components/symbol/TradeTape';
 import {
   decimalsOf,
   formatCandleTime,
@@ -402,50 +400,15 @@ function LiveBook({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
-function SegmentLoading({
-  segment,
-  symbol,
-  interval,
-  onInterval,
-}: {
-  segment: Segment;
-  symbol: string;
-  interval: CandleInterval;
-  onInterval: (interval: CandleInterval) => void;
-}): JSX.Element {
-  switch (segment) {
-    case 'Chart':
-      return <ChartLoading symbol={symbol} interval={interval} onInterval={onInterval} />;
-    case 'Book':
-      return <ListSkeleton rowHeight={BOOK_ROW_HEIGHT} testID="book-loading" />;
-    case 'Trades':
-      return <ListSkeleton rowHeight={TRADE_ROW_HEIGHT} testID="trades-loading" />;
-    case 'Info':
-      return <ListSkeleton rowHeight={INFO_ROW_HEIGHT} testID="info-loading" />;
-  }
-}
-
-function SegmentError({
-  segment,
-  symbol,
-  onRetry,
-  children,
-}: {
-  segment: Segment;
-  symbol: string;
-  onRetry: () => void;
-  children: ReactNode;
-}): JSX.Element {
-  const what =
-    segment === 'Book' ? `the ${symbol} book`
-    : segment === 'Trades' ? `${symbol} trades`
-    : `${symbol} details`;
-  return (
-    <ErrorBoundary fallbackComponent={() => <LoadError what={what} onRetry={onRetry} />}>
-      {children}
-    </ErrorBoundary>
-  );
-}
+/** The segments that suspend into the screen's boundary. The chart has its own. */
+const LISTS: Record<
+  Exclude<Segment, 'Chart'>,
+  { Body: ComponentType<{ symbol: string }>; Loading: ComponentType; what: (symbol: string) => string }
+> = {
+  Info: { Body: InstrumentInfo, Loading: InfoLoading, what: symbol => `${symbol} details` },
+  Book: { Body: LiveBook, Loading: BookLoading, what: symbol => `the ${symbol} book` },
+  Trades: { Body: TradeTape, Loading: TradesLoading, what: symbol => `${symbol} trades` },
+};
 
 function streamUrls(
   symbol: string,
@@ -527,14 +490,11 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
     const timer = setTimeout(() => setShown(segment), HOLD_MS);
     return () => clearTimeout(timer);
   }, [holding, segment]);
-  const placeholder = (
-    <SegmentLoading
-      segment={shown}
-      symbol={symbol}
-      interval={chartInterval}
-      onInterval={setChartInterval}
-    />
-  );
+  const list = shown === 'Chart' ? null : LISTS[shown];
+  const placeholder =
+    list ? <list.Loading /> : (
+      <ChartLoading symbol={symbol} interval={chartInterval} onInterval={setChartInterval} />
+    );
 
   return (
     <SafeScreen style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
@@ -560,7 +520,7 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
           {!committed ?
             placeholder
           : <Suspense key={retry} fallback={placeholder}>
-              {shown === 'Chart' ?
+              {!list ?
                 <ChartBody
                   symbol={symbol}
                   interval={chartInterval}
@@ -570,13 +530,12 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
                   onHold={setChartHold}
                   onScrub={onScrub}
                 />
-              : <SegmentError key={shown} segment={shown} symbol={symbol} onRetry={retryLoad}>
-                  {shown === 'Book' ?
-                    <LiveBook symbol={symbol} />
-                  : shown === 'Trades' ?
-                    <TradeTape symbol={symbol} />
-                  : <InstrumentInfo symbol={symbol} />}
-                </SegmentError>
+              : <ErrorBoundary
+                  key={shown}
+                  fallbackComponent={() => <LoadError what={list.what(symbol)} onRetry={retryLoad} />}
+                >
+                  <list.Body symbol={symbol} />
+                </ErrorBoundary>
               }
             </Suspense>
           }

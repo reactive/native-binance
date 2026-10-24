@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type JSX } from 'react';
 import { View } from 'react-native';
 
-import type { MotionViewProps } from '@/components/chart/motionStyle';
+import type { MotionViewProps } from '@/components/common/motionStyle';
 
 type Motion = MotionViewProps['opacity'];
 
@@ -35,12 +35,17 @@ export function MotionView({
     ] as const;
     const moving = axes.filter(([, node]) => node);
     if (!element || (!opacity && moving.length === 0)) return;
+    // A shared clock ticks every view each frame. Most values hold still, so skip unchanged writes.
+    let lastOpacity = '';
+    let lastTransform = '';
     const draw = () => {
-      if (opacity) element.style.opacity = String(valueOf(opacity));
+      if (opacity) {
+        const next = String(valueOf(opacity));
+        if (next !== lastOpacity) element.style.opacity = lastOpacity = next;
+      }
       if (moving.length > 0) {
-        element.style.transform = moving
-          .map(([name, node, unit]) => `${name}(${valueOf(node!)}${unit})`)
-          .join(' ');
+        const next = moving.map(([name, node, unit]) => `${name}(${valueOf(node!)}${unit})`).join(' ');
+        if (next !== lastTransform) element.style.transform = lastTransform = next;
       }
     };
     draw();

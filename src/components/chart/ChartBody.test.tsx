@@ -35,6 +35,7 @@ jest.mock('@reactive/silk-native', () => {
   return {
     SilkProvider: ({ children }: { children: React.ReactNode }) => children,
     useTheme: () => ({ theme }),
+    useReducedMotion: () => false,
     Text: ({ children, ...rest }: { children?: React.ReactNode }) =>
       React.createElement(RNText, rest, children),
     Button: ({

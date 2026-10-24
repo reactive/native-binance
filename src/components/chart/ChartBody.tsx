@@ -15,6 +15,7 @@ import {
   type Ref,
 } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   PixelRatio,
   Platform,
@@ -52,9 +53,8 @@ import {
   type TravelPlan,
 } from '@/components/chart/chartTravel';
 import { ChartSkeleton, GHOST_OPACITY, PlotCaption } from '@/components/chart/ChartSkeleton';
-import { MotionView } from '@/components/chart/MotionView';
-import { NATIVE_DRIVER } from '@/components/chart/motionStyle';
-import { useReduceMotion } from '@/components/common/useReduceMotion';
+import { MotionView } from '@/components/common/MotionView';
+import { NATIVE_DRIVER } from '@/components/common/motionStyle';
 import { LoadError } from '@/components/common/LoadError';
 import { Pill } from '@/components/common/Pill';
 import {
@@ -253,6 +253,22 @@ function clearStaging(session: Session | null) {
 }
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
+
+function useReduceMotion(): boolean {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let live = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(value => {
+      if (live) setEnabled(value);
+    });
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setEnabled);
+    return () => {
+      live = false;
+      sub.remove();
+    };
+  }, []);
+  return enabled;
+}
 
 function snapshotCandles(candles: readonly Candle[]): Candle[] {
   return candles.map(candle => Object.assign(new Candle(), candle));

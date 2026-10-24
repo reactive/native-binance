@@ -11,6 +11,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
+import { ListSkeleton } from '@/components/common/ListSkeleton';
 import { hasNewTrades, holdTape } from '@/components/symbol/holdTape';
 import { usePlaces } from '@/components/symbol/places';
 import { TRADE_ROW_HEIGHT, TradeRow, type TradePalette } from '@/components/symbol/TradeRow';
@@ -27,6 +28,10 @@ function getItemLayout(_: ArrayLike<Trade> | null | undefined, index: number) {
 
 function keyExtractor(trade: Trade): string {
   return String(trade.a);
+}
+
+export function TradesLoading(): JSX.Element {
+  return <ListSkeleton rowHeight={TRADE_ROW_HEIGHT} testID="trades-loading" />;
 }
 
 export default function TradeTape({ symbol }: TradeTapeProps): JSX.Element {
