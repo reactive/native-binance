@@ -23,10 +23,10 @@ import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-n
 import ChartBody, { ChartLoading, type ScrubQuote } from '@/components/chart/ChartBody';
 import { SafeScreen } from '@/components/common/SafeScreen';
 import { DIRECTION_WORD } from '@/components/chart/candleLayout';
-import { InstrumentInfo } from '@/components/symbol/InstrumentInfo';
+import { INFO_ROW_HEIGHT, InstrumentInfo } from '@/components/symbol/InstrumentInfo';
 import { ListSkeleton } from '@/components/common/ListSkeleton';
 import { LoadError } from '@/components/common/LoadError';
-import OrderBookView from '@/components/symbol/OrderBookView';
+import OrderBookView, { BOOK_ROW_HEIGHT } from '@/components/symbol/OrderBookView';
 import { Reconnecting } from '@/components/common/Reconnecting';
 import { useDismissSearchOnBack } from '@/components/symbol/searchBack';
 import { SymbolSearch } from '@/components/symbol/SymbolSearch';
@@ -55,8 +55,6 @@ const GUTTER = 12;
 const PAIR_MAX = 296;
 const STATUS_MAX = 92;
 const INDICATOR_PX = 8;
-const BOOK_ROW = 32;
-const INFO_ROW = 44;
 /** How long a tab switch keeps the last segment on screen before showing the new one's placeholder. */
 const HOLD_MS = 300;
 
@@ -404,6 +402,29 @@ function LiveBook({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
+function SegmentLoading({
+  segment,
+  symbol,
+  interval,
+  onInterval,
+}: {
+  segment: Segment;
+  symbol: string;
+  interval: CandleInterval;
+  onInterval: (interval: CandleInterval) => void;
+}): JSX.Element {
+  switch (segment) {
+    case 'Chart':
+      return <ChartLoading symbol={symbol} interval={interval} onInterval={onInterval} />;
+    case 'Book':
+      return <ListSkeleton rowHeight={BOOK_ROW_HEIGHT} testID="book-loading" />;
+    case 'Trades':
+      return <ListSkeleton rowHeight={TRADE_ROW_HEIGHT} testID="trades-loading" />;
+    case 'Info':
+      return <ListSkeleton rowHeight={INFO_ROW_HEIGHT} testID="info-loading" />;
+  }
+}
+
 function SegmentError({
   segment,
   symbol,
@@ -507,10 +528,12 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
     return () => clearTimeout(timer);
   }, [holding, segment]);
   const placeholder = (
-    shown === 'Chart' ? <ChartLoading symbol={symbol} interval={chartInterval} onInterval={setChartInterval} />
-    : shown === 'Book' ? <ListSkeleton rowHeight={BOOK_ROW} testID="book-loading" />
-    : shown === 'Trades' ? <ListSkeleton rowHeight={TRADE_ROW_HEIGHT} testID="trades-loading" />
-    : <ListSkeleton rowHeight={INFO_ROW} testID="info-loading" />
+    <SegmentLoading
+      segment={shown}
+      symbol={symbol}
+      interval={chartInterval}
+      onInterval={setChartInterval}
+    />
   );
 
   return (
@@ -568,7 +591,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
   },
-
   screen: {
     flex: 1,
   },

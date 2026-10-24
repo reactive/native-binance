@@ -1,20 +1,21 @@
 import { Text, useTheme } from '@reactive/silk-native';
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import { Animated, Easing, PixelRatio, Platform, StyleSheet, View } from 'react-native';
+import { Animated, Easing, PixelRatio, StyleSheet, View } from 'react-native';
 
 import { candleLayout, candleMetrics, PLOT_PAD } from '@/components/chart/candleLayout';
-import { FADE_IN_MS } from '@/components/chart/chartMotion';
+import { easeIn, FADE_IN_MS } from '@/components/chart/chartMotion';
 import { MotionView } from '@/components/chart/MotionView';
+import { NATIVE_DRIVER } from '@/components/chart/motionStyle';
 import { useReduceMotion } from '@/components/common/useReduceMotion';
 import { CANDLE_LIMIT } from '@/resources/Candle';
 
-const NATIVE_DRIVER = Platform.OS !== 'web' && process.env.JEST_WORKER_ID == null;
 /** One crest crossing the plot, then a rest before the next. */
-export const SWEEP_MS = 1500;
+const SWEEP_MS = 1500;
 const REST_MS = 450;
 /** Crest half-width as a fraction of the plot. */
 const CREST = 0.16;
-const BASE_OPACITY = 0.45;
+/** Ghost marks at rest. */
+export const GHOST_OPACITY = 0.45;
 
 type Point = { open: number; high: number; low: number; close: number };
 
@@ -41,7 +42,7 @@ function crestAt(clock: Animated.Value, at: number) {
   const span = 1 + CREST * 2;
   return clock.interpolate({
     inputRange: [0, at / span, (at + CREST) / span, (at + CREST * 2) / span, 1],
-    outputRange: [BASE_OPACITY, BASE_OPACITY, 1, BASE_OPACITY, BASE_OPACITY],
+    outputRange: [GHOST_OPACITY, GHOST_OPACITY, 1, GHOST_OPACITY, GHOST_OPACITY],
   });
 }
 
@@ -63,12 +64,12 @@ export function ChartSkeleton({
   const reduce = useReduceMotion();
   const clock = useState(() => new Animated.Value(0))[0];
   const enter = useState(() => new Animated.Value(appear ? 0 : 1))[0];
-  const still = useState(() => new Animated.Value(BASE_OPACITY))[0];
+  const still = useState(() => new Animated.Value(GHOST_OPACITY))[0];
   const ratio = PixelRatio.get();
   const placed = useMemo(() => candleLayout(GHOST, { width, height, ratio }), [height, ratio, width]);
   const metrics = candleMetrics(width, ratio);
   const crests = useMemo(
-    () => placed.map(item => crestAt(clock, width > 0 ? item.x / width : 0)),
+    () => placed.map(item => crestAt(clock, item.x / width)),
     [clock, placed, width],
   );
 
@@ -77,7 +78,7 @@ export function ChartSkeleton({
     const fade = Animated.timing(enter, {
       toValue: 1,
       duration: reduce ? 0 : FADE_IN_MS,
-      easing: Easing.bezier(0, 0, 0.2, 1),
+      easing: easeIn,
       useNativeDriver: NATIVE_DRIVER,
     });
     fade.start();
@@ -155,32 +156,14 @@ export function ChartSkeleton({
   );
 }
 
-/** Caption in the plot's top band, read to screen readers while the skeleton shows. */
-export function SkeletonCaption({ children, testID }: { children: string; testID?: string }): JSX.Element {
+/** Loading caption in the plot's top band, announced to screen readers. */
+export function PlotCaption({ children, testID }: { children: string; testID?: string }): JSX.Element {
   return (
     <View pointerEvents="none" style={styles.caption}>
       <Text role="caption" tone="secondary" accessibilityLiveRegion="polite" testID={testID}>
         {children}
       </Text>
     </View>
-  );
-}
-
-/** The readout row's four labels, with ghost bars where the values will be. */
-export function ReadoutSkeleton({ labels }: { labels: readonly string[] }): JSX.Element {
-  const { theme } = useTheme();
-  const color = theme.semantic.color.borderSubtle;
-  return (
-    <>
-      {labels.map(label => (
-        <View key={label} style={styles.readoutItem}>
-          <Text role="caption" tone="secondary" numberOfLines={1}>
-            {label}
-          </Text>
-          <View style={[styles.readoutBar, { backgroundColor: color }]} />
-        </View>
-      ))}
-    </>
   );
 }
 
@@ -199,19 +182,5 @@ const styles = StyleSheet.create({
     height: PLOT_PAD,
     justifyContent: 'center',
     alignItems: 'flex-start',
-  },
-  readoutItem: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-  readoutBar: {
-    marginTop: 4,
-    width: '58%',
-    maxWidth: 72,
-    height: 10,
-    borderRadius: 3,
-    opacity: BASE_OPACITY,
   },
 });

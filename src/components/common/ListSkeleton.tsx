@@ -1,11 +1,11 @@
 import { useTheme } from '@reactive/silk-native';
 import { useEffect, useState, type JSX } from 'react';
-import { Animated, Platform, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
 
 import { MotionView } from '@/components/chart/MotionView';
+import { NATIVE_DRIVER } from '@/components/chart/motionStyle';
 import { useReduceMotion } from '@/components/common/useReduceMotion';
 
-const NATIVE_DRIVER = Platform.OS !== 'web' && process.env.JEST_WORKER_ID == null;
 const PULSE_MS = 1200;
 const ROWS = 14;
 /** Fixed widths, so rows look like varied values without moving between renders. */

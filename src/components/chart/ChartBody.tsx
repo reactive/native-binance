@@ -51,8 +51,9 @@ import {
   type TravelCandle,
   type TravelPlan,
 } from '@/components/chart/chartTravel';
-import { ChartSkeleton, ReadoutSkeleton, SkeletonCaption } from '@/components/chart/ChartSkeleton';
+import { ChartSkeleton, GHOST_OPACITY, PlotCaption } from '@/components/chart/ChartSkeleton';
 import { MotionView } from '@/components/chart/MotionView';
+import { NATIVE_DRIVER } from '@/components/chart/motionStyle';
 import { useReduceMotion } from '@/components/common/useReduceMotion';
 import { LoadError } from '@/components/common/LoadError';
 import { Pill } from '@/components/common/Pill';
@@ -76,9 +77,6 @@ import { Candle, getCandles, INTERVALS, type CandleInterval } from '@/resources/
 import { MarketSymbol } from '@/resources/Symbol';
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
-// Jest's native animated mock ends the spring in 16ms without moving `p`.
-// The device still uses the native driver; web and tests run the same JS graph.
-const NATIVE_DRIVER = Platform.OS !== 'web' && process.env.JEST_WORKER_ID == null;
 // JavaScript springs timestamp independently, so web and Jest share one clock.
 const SHARE_CLOCK = !NATIVE_DRIVER;
 const LABELS = ['Open', 'High', 'Low', 'Close'] as const;
@@ -729,6 +727,25 @@ const CandlePlot = memo(function CandlePlot({
     </>
   );
 });
+
+/** The readout before it has a candle. `ghost` marks where values will load. */
+function ReadoutLabels({ ghost }: { ghost: boolean }): JSX.Element {
+  const { theme } = useTheme();
+  return (
+    <>
+      {LABELS.map(label => (
+        <View key={label} style={styles.readoutItem}>
+          <Text role="caption" tone="secondary" numberOfLines={1}>
+            {label}
+          </Text>
+          {ghost ?
+            <View style={[styles.ghostValue, { backgroundColor: theme.semantic.color.borderSubtle }]} />
+          : null}
+        </View>
+      ))}
+    </>
+  );
+}
 
 function ReadoutValue({
   label,
@@ -1704,17 +1721,7 @@ function ChartFrame({
           <ChartSkeleton width={width} height={height} appear />
         : null}
         {caption ?
-          <View pointerEvents="none" style={[styles.band, styles.bandTop, styles.captionBand]}>
-            <Text
-              role="caption"
-              tone="secondary"
-              style={TABULAR}
-              accessibilityLiveRegion="polite"
-              testID="chart-caption"
-            >
-              Loading {intervalLabel(requested)} candles
-            </Text>
-          </View>
+          <PlotCaption testID="chart-caption">{`Loading ${intervalLabel(requested)} candles`}</PlotCaption>
         : null}
       </View>
       <View testID="candle-readout" style={styles.readout}>
@@ -1726,15 +1733,7 @@ function ChartFrame({
             candle={scrubCandle ?? published.candles[published.candles.length - 1]}
             opacity={published.opacity}
           />
-        : waiting ?
-          <ReadoutSkeleton labels={LABELS} />
-        : LABELS.map(label => (
-            <View key={label} style={styles.readoutItem}>
-              <Text role="caption" tone="secondary" numberOfLines={1}>
-                {label}
-              </Text>
-            </View>
-          ))}
+        : <ReadoutLabels ghost={waiting} />}
       </View>
       {showEmpty && published ?
         <Animated.View
@@ -1775,10 +1774,10 @@ function ChartPlaceholder({
     <>
       <View style={[styles.plot, { width, height }]}>
         <ChartSkeleton width={width} height={height} />
-        <SkeletonCaption testID="chart-loading">{`Loading ${symbol}`}</SkeletonCaption>
+        <PlotCaption testID="chart-loading">{`Loading ${symbol}`}</PlotCaption>
       </View>
       <View style={styles.readout}>
-        <ReadoutSkeleton labels={LABELS} />
+        <ReadoutLabels ghost />
       </View>
     </>
   );
@@ -1939,9 +1938,6 @@ const styles = StyleSheet.create({
   bandBottom: {
     bottom: 0,
   },
-  captionBand: {
-    alignItems: 'flex-start',
-  },
   message: {
     paddingHorizontal: PLOT_MARGIN,
     paddingTop: PLOT_MARGIN,
@@ -1958,6 +1954,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'flex-start',
     justifyContent: 'center',
+  },
+  ghostValue: {
+    marginTop: 4,
+    width: '58%',
+    maxWidth: 72,
+    height: 10,
+    borderRadius: 3,
+    opacity: GHOST_OPACITY,
   },
   readoutLayer: {
     position: 'absolute',

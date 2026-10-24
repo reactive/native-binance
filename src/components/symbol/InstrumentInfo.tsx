@@ -7,7 +7,7 @@ import { AssetSection } from '@/components/symbol/AssetInfo';
 import { trimDecimal } from '@/components/common/formatMarket';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 
-const ROW_HEIGHT = 48;
+export const INFO_ROW_HEIGHT = 48;
 const GUTTER = 12;
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
 
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     paddingTop: GUTTER,
   },
   row: {
-    height: ROW_HEIGHT,
+    height: INFO_ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
