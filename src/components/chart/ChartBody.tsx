@@ -1,5 +1,5 @@
 import { AsyncBoundary, useCache, useController, useLive, useQuery } from '@data-client/react';
-import { Text, useTheme } from '@reactive/silk-native';
+import { Text, useReducedMotion, useTheme } from '@reactive/silk-native';
 import {
   forwardRef,
   memo,
@@ -15,7 +15,6 @@ import {
   type Ref,
 } from 'react';
 import {
-  AccessibilityInfo,
   Animated,
   PixelRatio,
   Platform,
@@ -52,7 +51,9 @@ import {
   type TravelCandle,
   type TravelPlan,
 } from '@/components/chart/chartTravel';
-import { MotionView } from '@/components/chart/MotionView';
+import { ChartSkeleton, GHOST_OPACITY, PlotCaption } from '@/components/chart/ChartSkeleton';
+import { MotionView } from '@/components/common/MotionView';
+import { NATIVE_DRIVER } from '@/components/common/motionStyle';
 import { LoadError } from '@/components/common/LoadError';
 import { Pill } from '@/components/common/Pill';
 import {
@@ -75,9 +76,6 @@ import { Candle, getCandles, INTERVALS, type CandleInterval } from '@/resources/
 import { MarketSymbol } from '@/resources/Symbol';
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
-// Jest's native animated mock ends the spring in 16ms without moving `p`.
-// The device still uses the native driver; web and tests run the same JS graph.
-const NATIVE_DRIVER = Platform.OS !== 'web' && process.env.JEST_WORKER_ID == null;
 // JavaScript springs timestamp independently, so web and Jest share one clock.
 const SHARE_CLOCK = !NATIVE_DRIVER;
 const LABELS = ['Open', 'High', 'Low', 'Close'] as const;
@@ -254,22 +252,6 @@ function clearStaging(session: Session | null) {
 }
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
-
-function useReduceMotion(): boolean {
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    let live = true;
-    AccessibilityInfo.isReduceMotionEnabled().then(value => {
-      if (live) setEnabled(value);
-    });
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setEnabled);
-    return () => {
-      live = false;
-      sub.remove();
-    };
-  }, []);
-  return enabled;
-}
 
 function snapshotCandles(candles: readonly Candle[]): Candle[] {
   return candles.map(candle => Object.assign(new Candle(), candle));
@@ -745,6 +727,25 @@ const CandlePlot = memo(function CandlePlot({
   );
 });
 
+/** The readout before it has a candle. `ghost` marks where values will load. */
+function ReadoutLabels({ ghost }: { ghost: boolean }): JSX.Element {
+  const { theme } = useTheme();
+  return (
+    <>
+      {LABELS.map(label => (
+        <View key={label} style={styles.readoutItem}>
+          <Text role="caption" tone="secondary" numberOfLines={1}>
+            {label}
+          </Text>
+          {ghost ?
+            <View style={[styles.ghostValue, { backgroundColor: theme.semantic.color.borderSubtle }]} />
+          : null}
+        </View>
+      ))}
+    </>
+  );
+}
+
 function ReadoutValue({
   label,
   value,
@@ -985,7 +986,7 @@ function ChartFrame({
   insetLeft: number;
 }): JSX.Element {
   const controller = useController();
-  const reduce = useReduceMotion();
+  const reduce = useReducedMotion();
   const bootKind = useRef(boot).current;
   const readyAtStart = useRef(
     bootKind !== 'switch' &&
@@ -1624,6 +1625,8 @@ function ChartFrame({
   const hidden = phase.kind === 'out';
   const showValues = published != null && published.candles.length > 0 && published.interval === mounted;
   const showEmpty = published != null && published.candles.length === 0 && published.interval === mounted;
+  // The caption's delay keeps a quick load from flashing the skeleton.
+  const waiting = caption && phase.kind === 'empty';
 
   return (
     <View style={styles.frame}>
@@ -1713,18 +1716,11 @@ function ChartFrame({
             />
           </Animated.View>
         : null}
+        {waiting ?
+          <ChartSkeleton width={width} height={height} appear />
+        : null}
         {caption ?
-          <View pointerEvents="none" style={[styles.band, styles.bandTop, styles.captionBand]}>
-            <Text
-              role="caption"
-              tone="secondary"
-              style={TABULAR}
-              accessibilityLiveRegion="polite"
-              testID="chart-caption"
-            >
-              Loading {intervalLabel(requested)} candles
-            </Text>
-          </View>
+          <PlotCaption testID="chart-caption">{`Loading ${intervalLabel(requested)} candles`}</PlotCaption>
         : null}
       </View>
       <View testID="candle-readout" style={styles.readout}>
@@ -1736,13 +1732,7 @@ function ChartFrame({
             candle={scrubCandle ?? published.candles[published.candles.length - 1]}
             opacity={published.opacity}
           />
-        : LABELS.map(label => (
-            <View key={label} style={styles.readoutItem}>
-              <Text role="caption" tone="secondary" numberOfLines={1}>
-                {label}
-              </Text>
-            </View>
-          ))}
+        : <ReadoutLabels ghost={waiting} />}
       </View>
       {showEmpty && published ?
         <Animated.View
@@ -1765,6 +1755,50 @@ function ChartFrame({
           />
         </View>
       : null}
+    </View>
+  );
+}
+
+/** The plot and readout before a list exists: ghost candles, so the first load shows the chart's shape at once. */
+function ChartPlaceholder({
+  symbol,
+  width,
+  height,
+}: {
+  symbol: string;
+  width: number;
+  height: number;
+}): JSX.Element {
+  return (
+    <>
+      <View style={[styles.plot, { width, height }]}>
+        <ChartSkeleton width={width} height={height} />
+        <PlotCaption testID="chart-loading">{`Loading ${symbol}`}</PlotCaption>
+      </View>
+      <View style={styles.readout}>
+        <ReadoutLabels ghost />
+      </View>
+    </>
+  );
+}
+
+/** The chart segment before its screen can subscribe. Same layout as the chart, with nothing to select yet. */
+export function ChartLoading({
+  symbol,
+  interval,
+  onInterval,
+}: {
+  symbol: string;
+  interval: CandleInterval;
+  onInterval: (interval: CandleInterval) => void;
+}): JSX.Element {
+  const { width, height } = useWindowDimensions();
+  const insets = useScreenInsets();
+  const plot = plotSize(width, height, insets.top, insets.bottom);
+  return (
+    <View style={styles.body}>
+      <IntervalChips value={interval} onSelect={onInterval} />
+      <ChartPlaceholder symbol={symbol} width={plot.width} height={plot.height} />
     </View>
   );
 }
@@ -1843,11 +1877,7 @@ function ChartBody({
           <IntervalChips value={interval} onSelect={onInterval} />
           <AsyncBoundary
             key={retry}
-            fallback={
-              <Text tone="secondary" testID="chart-loading" style={styles.message}>
-                Loading {symbol}
-              </Text>
-            }
+            fallback={<ChartPlaceholder symbol={symbol} width={plot.width} height={plot.height} />}
             errorComponent={() => <LoadError what={`${symbol} candles`} onRetry={onRetry} />}
           >
             <Gate symbol={symbol} interval={openedAt} onOpen={openGate} />
@@ -1907,9 +1937,6 @@ const styles = StyleSheet.create({
   bandBottom: {
     bottom: 0,
   },
-  captionBand: {
-    alignItems: 'flex-start',
-  },
   message: {
     paddingHorizontal: PLOT_MARGIN,
     paddingTop: PLOT_MARGIN,
@@ -1926,6 +1953,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'flex-start',
     justifyContent: 'center',
+  },
+  ghostValue: {
+    marginTop: 4,
+    width: '58%',
+    maxWidth: 72,
+    height: 10,
+    borderRadius: 3,
+    opacity: GHOST_OPACITY,
   },
   readoutLayer: {
     position: 'absolute',

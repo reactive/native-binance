@@ -3,11 +3,12 @@ import { Badge, Text, useTheme } from '@reactive/silk-native';
 import type { JSX, ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, type TextStyle } from 'react-native';
 
+import { ListSkeleton } from '@/components/common/ListSkeleton';
 import { AssetSection } from '@/components/symbol/AssetInfo';
 import { trimDecimal } from '@/components/common/formatMarket';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 
-const ROW_HEIGHT = 48;
+const INFO_ROW_HEIGHT = 48;
 const GUTTER = 12;
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
 
@@ -56,6 +57,10 @@ function InfoRow({
       </View>
     </View>
   );
+}
+
+export function InfoLoading(): JSX.Element {
+  return <ListSkeleton rowHeight={INFO_ROW_HEIGHT} testID="info-loading" />;
 }
 
 export function InstrumentInfo({ symbol }: { symbol: string }): JSX.Element {
@@ -151,7 +156,7 @@ const styles = StyleSheet.create({
     paddingTop: GUTTER,
   },
   row: {
-    height: ROW_HEIGHT,
+    height: INFO_ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

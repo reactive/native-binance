@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { formatPrice, formatSize } from '@/components/common/formatMarket';
+import { ListSkeleton } from '@/components/common/ListSkeleton';
 import { usePlaces, type Places } from '@/components/symbol/places';
 
 export type Level = readonly [price: number, qty: number];
@@ -27,7 +28,7 @@ export type OrderBookViewProps = {
 };
 
 /** Fixed row height so FlatList can use getItemLayout; bodySm (14px) text sits centered. */
-const ROW_HEIGHT = 32;
+const BOOK_ROW_HEIGHT = 32;
 const ROW_GUTTER = 12; // theme.semantic.space[3]
 const BAR_INSET = 3;
 /**
@@ -115,7 +116,7 @@ const LevelRow = memo(function LevelRow({
 });
 
 function getItemLayout(_: ArrayLike<Level> | null | undefined, index: number) {
-  return { length: ROW_HEIGHT, offset: ROW_HEIGHT * index, index };
+  return { length: BOOK_ROW_HEIGHT, offset: BOOK_ROW_HEIGHT * index, index };
 }
 
 function keyExtractor(level: Level): string {
@@ -277,7 +278,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   row: {
-    height: ROW_HEIGHT,
+    height: BOOK_ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: ROW_GUTTER,
@@ -307,5 +308,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: ROW_GUTTER,
   },
 });
+
+export function BookLoading(): JSX.Element {
+  return <ListSkeleton rowHeight={BOOK_ROW_HEIGHT} testID="book-loading" />;
+}
 
 export default OrderBookView;

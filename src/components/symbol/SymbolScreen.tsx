@@ -1,20 +1,36 @@
-import { AsyncBoundary, useController, useLive, useQuery, useSuspense } from '@data-client/react';
+import {
+  AsyncBoundary,
+  ErrorBoundary,
+  useController,
+  useLive,
+  useQuery,
+  useSuspense,
+} from '@data-client/react';
 import { Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+import {
+  startTransition,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+  type JSX,
+} from 'react';
 import { PixelRatio, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 
-import ChartBody, { type ScrubQuote } from '@/components/chart/ChartBody';
+import ChartBody, { ChartLoading, type ScrubQuote } from '@/components/chart/ChartBody';
 import { SafeScreen } from '@/components/common/SafeScreen';
 import { DIRECTION_WORD } from '@/components/chart/candleLayout';
-import { InstrumentInfo } from '@/components/symbol/InstrumentInfo';
+import { InfoLoading, InstrumentInfo } from '@/components/symbol/InstrumentInfo';
 import { LoadError } from '@/components/common/LoadError';
-import OrderBookView from '@/components/symbol/OrderBookView';
+import OrderBookView, { BookLoading } from '@/components/symbol/OrderBookView';
 import { Reconnecting } from '@/components/common/Reconnecting';
 import { useDismissSearchOnBack } from '@/components/symbol/searchBack';
 import { SymbolSearch } from '@/components/symbol/SymbolSearch';
 import { TickerFeed } from '@/components/common/TickerFeed';
-import TradeTape from '@/components/symbol/TradeTape';
+import TradeTape, { TradesLoading } from '@/components/symbol/TradeTape';
 import {
   decimalsOf,
   formatCandleTime,
@@ -37,6 +53,8 @@ const GUTTER = 12;
 const PAIR_MAX = 296;
 const STATUS_MAX = 92;
 const INDICATOR_PX = 8;
+/** How long a tab switch keeps the last segment on screen before showing the new one's placeholder. */
+const HOLD_MS = 300;
 
 const SEGMENTS = ['Chart', 'Info', 'Book', 'Trades'] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -382,6 +400,16 @@ function LiveBook({ symbol }: { symbol: string }): JSX.Element {
   );
 }
 
+/** The segments that suspend into the screen's boundary. The chart has its own. */
+const LISTS: Record<
+  Exclude<Segment, 'Chart'>,
+  { Body: ComponentType<{ symbol: string }>; Loading: ComponentType; what: (symbol: string) => string }
+> = {
+  Info: { Body: InstrumentInfo, Loading: InfoLoading, what: symbol => `${symbol} details` },
+  Book: { Body: LiveBook, Loading: BookLoading, what: symbol => `the ${symbol} book` },
+  Trades: { Body: TradeTape, Loading: TradesLoading, what: symbol => `${symbol} trades` },
+};
+
 function streamUrls(
   symbol: string,
   segment: Segment,
@@ -400,7 +428,10 @@ function streamUrls(
 
 export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Element {
   const { theme } = useTheme();
+  // `segment` is the tab, and moves on tap. `shown` is the body. A transition keeps the last
+  // segment on screen while the next one loads, up to HOLD_MS.
   const [segment, setSegment] = useState<Segment>('Chart');
+  const [shown, setShown] = useState<Segment>('Chart');
   const [chartInterval, setChartInterval] = useState<CandleInterval>('15m');
   const [chartHold, setChartHold] = useState<CandleInterval | null>(null);
   const [scrub, setScrub] = useState<ScrubQuote | null>(null);
@@ -448,6 +479,22 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
   useEffect(() => {
     setCommitted(true);
   }, []);
+  const selectSegment = useCallback((next: Segment) => {
+    setSegment(next);
+    startTransition(() => setShown(next));
+  }, []);
+  const holding = shown !== segment;
+  // A slow load must still answer the tap. This urgent update shows the placeholder.
+  useEffect(() => {
+    if (!holding) return;
+    const timer = setTimeout(() => setShown(segment), HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [holding, segment]);
+  const list = shown === 'Chart' ? null : LISTS[shown];
+  const placeholder =
+    list ? <list.Loading /> : (
+      <ChartLoading symbol={symbol} interval={chartInterval} onInterval={setChartInterval} />
+    );
 
   return (
     <SafeScreen style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
@@ -468,61 +515,30 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
             <PriceStrip symbol={symbol} streams={streams} scrub={scrub} />
           </AsyncBoundary>
         : <PriceStripFallback streams={streams} />}
-        <Segments segment={segment} onSelect={setSegment} />
+        <Segments segment={segment} onSelect={selectSegment} />
         <View style={styles.body} testID="symbol-body">
           {!committed ?
-            <Text tone="secondary" testID="chart-loading" style={styles.message}>
-              Loading {symbol}
-            </Text>
-          : segment === 'Book' ?
-            <AsyncBoundary
-              key={retry}
-              fallback={
-                <Text tone="secondary" testID="book-loading" style={styles.message}>
-                  Loading {symbol}
-                </Text>
+            placeholder
+          : <Suspense key={retry} fallback={placeholder}>
+              {!list ?
+                <ChartBody
+                  symbol={symbol}
+                  interval={chartInterval}
+                  onInterval={setChartInterval}
+                  onRetry={retryLoad}
+                  retry={retry}
+                  onHold={setChartHold}
+                  onScrub={onScrub}
+                />
+              : <ErrorBoundary
+                  key={shown}
+                  fallbackComponent={() => <LoadError what={list.what(symbol)} onRetry={retryLoad} />}
+                >
+                  <list.Body symbol={symbol} />
+                </ErrorBoundary>
               }
-              errorComponent={() => (
-                <LoadError what={`the ${symbol} book`} onRetry={retryLoad} />
-              )}
-            >
-              <LiveBook symbol={symbol} />
-            </AsyncBoundary>
-          : segment === 'Trades' ?
-            <AsyncBoundary
-              key={retry}
-              fallback={
-                <Text tone="secondary" testID="trades-loading" style={styles.message}>
-                  Loading {symbol}
-                </Text>
-              }
-              errorComponent={() => <LoadError what={`${symbol} trades`} onRetry={retryLoad} />}
-            >
-              <TradeTape symbol={symbol} />
-            </AsyncBoundary>
-          : segment === 'Chart' ?
-            <ChartBody
-              symbol={symbol}
-              interval={chartInterval}
-              onInterval={setChartInterval}
-              onRetry={retryLoad}
-              retry={retry}
-              onHold={setChartHold}
-              onScrub={onScrub}
-            />
-          : segment === 'Info' ?
-            <AsyncBoundary
-              key={retry}
-              fallback={
-                <Text tone="secondary" testID="info-loading" style={styles.message}>
-                  Loading {symbol}
-                </Text>
-              }
-              errorComponent={() => <LoadError what={`${symbol} details`} onRetry={retryLoad} />}
-            >
-              <InstrumentInfo symbol={symbol} />
-            </AsyncBoundary>
-          : null}
+            </Suspense>
+          }
         </View>
       </View>
       {searching ? <SymbolSearch onChoose={chooseSymbol} onDismiss={closeSearch} /> : null}
@@ -641,10 +657,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
-  },
-  message: {
-    paddingHorizontal: GUTTER,
-    paddingTop: GUTTER,
   },
   body: {
     flex: 1,

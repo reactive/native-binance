@@ -2,7 +2,7 @@ import { DataProvider, getDefaultManagers, useController } from '@data-client/re
 import type { Controller } from '@data-client/react';
 import { mockInitialState, MockResolver } from '@data-client/test';
 import { useState } from 'react';
-import { AccessibilityInfo, Animated, Dimensions, PixelRatio, StyleSheet } from 'react-native';
+import { Animated, Dimensions, PixelRatio, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
@@ -13,6 +13,8 @@ import { formatCandleTime } from '@/components/common/formatMarket';
 import { getCandles, upsertCandle, type CandleInterval } from '@/resources/Candle';
 import CandleStream from '@/resources/CandleStream';
 import { FakeSocket, installFakeSocket } from '@/resources/testSocket';
+
+let mockReducedMotion = false;
 
 jest.mock('@reactive/silk-native', () => {
   const React = require('react');
@@ -35,6 +37,7 @@ jest.mock('@reactive/silk-native', () => {
   return {
     SilkProvider: ({ children }: { children: React.ReactNode }) => children,
     useTheme: () => ({ theme }),
+    useReducedMotion: () => mockReducedMotion,
     Text: ({ children, ...rest }: { children?: React.ReactNode }) =>
       React.createElement(RNText, rest, children),
     Button: ({
@@ -327,14 +330,7 @@ afterEach(() => {
   restoreSocket();
   jest.useRealTimers();
   jest.restoreAllMocks();
-  // spyOn on the preset's jest.fn does not register a restore, so
-  // mockResolvedValue(true) would stick for every later test.
-  (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockImplementation(() =>
-    Promise.resolve(false),
-  );
-  (AccessibilityInfo.addEventListener as jest.Mock).mockImplementation(() => ({
-    remove() {},
-  }));
+  mockReducedMotion = false;
 });
 
 const current15 = () => seed('15m', period(NOW, '15m'), 111);
@@ -368,8 +364,10 @@ it('fades to a delayed 1h list without the first-load sentence', async () => {
 
   await advance(399);
   expect(present('chart-caption')).toBe(false);
+  expect(present('chart-skeleton')).toBe(false);
   await advance(1);
   expect(textOf('chart-caption')).toBe('Loading 1h candles');
+  expect(present('chart-skeleton')).toBe(true);
   expect(present('candle-series-1h')).toBe(false);
   keepSize();
 
@@ -377,6 +375,7 @@ it('fades to a delayed 1h list without the first-load sentence', async () => {
   expect(present('candle-series-1h')).toBe(true);
   expect(textOf('candle-close')).toBe('222');
   expect(present('chart-caption')).toBe(false);
+  expect(present('chart-skeleton')).toBe(false);
   expect(present('chart-loading')).toBe(false);
   keepSize();
 });
@@ -497,6 +496,25 @@ it('keeps the frozen outgoing close when a kline arrives mid-fade', async () => 
   expect(textOf('candle-close')).toBe('111');
   expect(present('candle-last')).toBe(true);
   expect(present('candle-series-15m')).toBe(true);
+});
+
+it('draws ghost candles in the plot on first load', async () => {
+  mount({
+    interval: '15m',
+    seeds: [],
+    delay: () => 1000,
+    resolve: params => [row(period(Date.now(), params.interval), 111)],
+  });
+  await flush();
+  expect(textOf('chart-loading')).toBe('Loading BTCUSDT');
+  expect(present('chart-skeleton')).toBe(true);
+  expect(present('interval-15m')).toBe(true);
+
+  await advance(1000);
+  await settle();
+  expect(present('chart-skeleton')).toBe(false);
+  expect(present('chart-loading')).toBe(false);
+  expect(textOf('candle-close')).toBe('111');
 });
 
 it('keeps a chart-local failure inside the frame and retries only the chart', async () => {
@@ -673,8 +691,7 @@ it('does not paint an expired list when Chart mounts again', async () => {
 });
 
 it('cuts to a ready interval in one commit when reduce motion is on', async () => {
-  jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
-  jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove() {} });
+  mockReducedMotion = true;
   mount({
     interval: '15m',
     seeds: [current15(), seed('1h', period(NOW, '1h'), 222)],
