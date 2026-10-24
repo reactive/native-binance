@@ -72,13 +72,16 @@ function setup() {
 }
 
 // A full build takes minutes, so skip it when this commit is already built.
+// Only a clean tree is stamped: a build of uncommitted edits is not that commit.
 function buildIfChanged() {
   const stamp = join(dataClient, 'node_modules/.native-binance-build');
   const head = git('rev-parse HEAD');
+  const clean = !git('status --porcelain -- packages');
   const built = existsSync(stamp) && readFileSync(stamp, 'utf8') === head;
-  if (built && !git('status --porcelain -- packages')) return;
+  if (built && clean) return;
+  rmSync(stamp, { force: true });
   yarn(dataClient, 'build');
-  writeFileSync(stamp, head);
+  if (clean) writeFileSync(stamp, head);
 }
 
 function packageSources() {
