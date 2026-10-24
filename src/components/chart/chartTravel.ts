@@ -1,3 +1,4 @@
+import { criticalSpring, type SpringConfig } from '@/components/common/spring';
 import { INTERVALS, type CandleInterval } from '@/resources/Candle';
 
 import { PLOT_PAD, candleMetrics, type CandlePlacement } from './candleLayout';
@@ -6,6 +7,7 @@ import { intervalMs, periodEnd, periodStart } from './chartMotion';
 /** Critically damped clock reaches p ≈ 0.99 at t = D. */
 export const OMEGA_TAU = 6.638;
 export const MIN_SCALE = 0.4;
+/** Speed never holds a travel clock that is close enough, so a layer out of view stops updating. */
 export const REST_SPEED = 1e6;
 /** Mean Gregorian month. The month axis is 22px per this length, not the forming month. */
 export const MEAN_MONTH_DAYS = 30.436875;
@@ -172,16 +174,9 @@ export function travelDuration(k: number): number {
   return Math.min(900, raw);
 }
 
-export function travelSpring(durationMs: number, restDisplacementThreshold: number) {
-  const omega = (OMEGA_TAU * 1000) / durationMs;
-  return {
-    mass: 1,
-    stiffness: omega * omega,
-    damping: 2 * omega,
-    overshootClamping: true as const,
-    restDisplacementThreshold,
-    restSpeedThreshold: REST_SPEED,
-  };
+/** From rest, the travel spring passes p ≈ 0.99 at `durationMs`. */
+export function travelSpring(durationMs: number): SpringConfig {
+  return criticalSpring((OMEGA_TAU * 1000) / durationMs);
 }
 
 export function springPosition(u: number): number {

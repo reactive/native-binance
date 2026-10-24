@@ -356,9 +356,7 @@ it('uses the sine table, the spring, and early-rest thresholds', () => {
   expect(progressAtQ(0)).toBe(0);
   expect(progressAtQ(1)).toBeCloseTo(springPosition(1), 6);
   expect(springPosition(1)).toBeCloseTo(0.99, 2);
-  const at340 = travelSpring(340, 0.01);
-  expect(at340.stiffness).toBeCloseTo(381, 0);
-  expect(at340.restDisplacementThreshold).toBe(0.01);
+  expect(travelSpring(340).stiffness).toBeCloseTo(381, 0);
   const plan = assume('1m', '1M');
   for (const step of plan.steps) {
     expect(step.forwardThreshold).toBeGreaterThanOrEqual(0.01);
