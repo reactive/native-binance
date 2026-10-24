@@ -277,7 +277,6 @@ function travelAttempt(
   to: CandleInterval,
   origin: readonly Candle[],
   target: readonly Candle[],
-  elapsedMs: number,
   width: number,
   height: number,
   targetReady: boolean,
@@ -293,7 +292,6 @@ function travelAttempt(
     atRest: true,
     originReady: origin.length > 0 && origin[origin.length - 1].openTime >= periodStart(now, from),
     targetReady,
-    elapsedMs,
     width,
     height,
     ratio: PixelRatio.get(),
@@ -1370,7 +1368,6 @@ function ChartFrame({
             next,
             origin,
             stored,
-            0,
             widthRef.current,
             heightRef.current,
             true,
@@ -1380,7 +1377,6 @@ function ChartFrame({
             failedRef.current = null;
             setPinned(origin);
             onHoldRef.current(mounted);
-            const touchAt = now;
             const token = travelToken.current;
             const from = mounted;
             wait.current.travel = setTimeout(() => {
@@ -1395,7 +1391,6 @@ function ChartFrame({
                 next,
                 origin,
                 fresh,
-                decidedAt - touchAt,
                 widthRef.current,
                 heightRef.current,
                 canShow(next),

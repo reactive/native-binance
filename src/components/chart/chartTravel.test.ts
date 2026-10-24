@@ -77,7 +77,6 @@ function input(from: CandleInterval, to: CandleInterval, extra: Partial<TravelIn
     atRest: true,
     originReady: true,
     targetReady: true,
-    elapsedMs: 0,
     width: WIDTH,
     height: HEIGHT,
     ratio: RATIO,
@@ -379,7 +378,6 @@ it('falls back when a gate fails', () => {
   expect(planTravel(input('15m', '1h', { originReady: false })).ok).toBe(false);
   expect(planTravel(input('1w', '1M', { reduceMotion: true })).ok).toBe(false);
   expect(planTravel(input('1m', '1d', { atRest: false })).ok).toBe(false);
-  expect(planTravel(input('4h', '1w', { elapsedMs: 101 })).ok).toBe(false);
   expect(planTravel(input('1h', '1M', { origin: [] })).ok).toBe(false);
   const flat = build('15m').map(candle => ({ ...candle, open: 1, high: 1, low: 1, close: 1 }));
   const flatPlan = planTravel(input('15m', '1h', { origin: flat }));

@@ -970,7 +970,7 @@ it('settles a resize during reverse on the interval the pill shows', async () =>
   expect(present('candle-series-1h')).toBe(false);
 });
 
-it('keeps one kline socket and fades when the travel start is late', async () => {
+it('keeps one kline socket and travels when the travel start is late', async () => {
   mount({
     interval: '15m',
     seeds: [series('15m'), series('1h')],
@@ -1012,8 +1012,8 @@ it('keeps one kline socket and fades when the travel start is late', async () =>
   await press('interval-15m');
   jest.setSystemTime(Date.now() + 150);
   await advance(1);
-  expect(present('candle-series-1h')).toBe(true);
-  expect(present('candle-series-15m')).toBe(false);
+  expect(node('candle-series-1h')?.props.accessibilityElementsHidden).toBe(true);
+  expect(present('candle-series-15m')).toBe(true);
 });
 
 function pointerAt(x: number, type = 'mouse') {

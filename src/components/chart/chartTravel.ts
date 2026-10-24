@@ -6,7 +6,6 @@ import { intervalMs, periodEnd, periodStart } from './chartMotion';
 /** Critically damped clock reaches p ≈ 0.99 at t = D. */
 export const OMEGA_TAU = 6.638;
 export const MIN_SCALE = 0.4;
-export const TRAVEL_COMMIT_MS = 100;
 export const REST_SPEED = 1e6;
 /** Mean Gregorian month. The month axis is 22px per this length, not the forming month. */
 export const MEAN_MONTH_DAYS = 30.436875;
@@ -40,7 +39,7 @@ export type StoredList = {
   error?: boolean;
 };
 
-export type TravelRefusal = 'motion' | 'rest' | 'ready' | 'empty' | 'flat' | 'edge' | 'late' | 'budget';
+export type TravelRefusal = 'motion' | 'rest' | 'ready' | 'empty' | 'flat' | 'edge';
 
 export type PriceDomain = { high: number; low: number };
 
@@ -102,7 +101,6 @@ export type TravelInput = {
   atRest: boolean;
   originReady: boolean;
   targetReady: boolean;
-  elapsedMs: number;
   width: number;
   height: number;
   ratio: number;
@@ -751,7 +749,6 @@ export function planTravel(
   if (input.reduceMotion) return { ok: false, reason: 'motion' };
   if (!input.atRest) return { ok: false, reason: 'rest' };
   if (!input.originReady || !input.targetReady) return { ok: false, reason: 'ready' };
-  if (input.elapsedMs > TRAVEL_COMMIT_MS) return { ok: false, reason: 'late' };
   const origin = sortCandles(input.origin);
   const target = sortCandles(input.target);
   if (origin.length === 0 || target.length === 0) return { ok: false, reason: 'empty' };
@@ -769,10 +766,8 @@ export function planTravel(
   if (!staged.ok) return staged;
   if (staged.plan.peakViews * UPDATE_US <= UPDATE_BUDGET_US) return staged;
 
-  const light = assemble(input, origin, target, ids, STAGING_LEAD_TIGHT_MS, furthestIntermediates(ids));
-  if (!light.ok) return light;
-  if (light.plan.peakViews * UPDATE_US <= UPDATE_BUDGET_US) return light;
-  return { ok: false, reason: 'budget' };
+  // Over budget still travels. A stuttering travel beats a fade.
+  return assemble(input, origin, target, ids, STAGING_LEAD_TIGHT_MS, furthestIntermediates(ids));
 }
 
 export function labelStops(plan: TravelPlan): OpacityStops {
