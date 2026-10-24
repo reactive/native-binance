@@ -3,7 +3,7 @@ import { Badge, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { memo, type JSX } from 'react';
 import { Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 
-import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/formatMarket';
+import { decimalsOf, formatPercent, formatPrice, formatQuoteVolume } from '@/components/common/formatMarket';
 import { MarketSymbol } from '@/resources/Symbol';
 import { Ticker } from '@/resources/Ticker';
 

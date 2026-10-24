@@ -25,10 +25,10 @@ Load `EXPO_TOKEN` from `.env.local` for local EAS commands. Never print the toke
 
 ## This project
 
-- SDK 58 beta, React Native 0.88 RC, React 19.3.
+- SDK 58, React Native 0.88, React 19.3.
 - UI is `@reactive/silk-native`, vendored in `vendor/` until Silk is published. Refresh with `yarn vendor:silk` from a sibling `../silk` checkout.
 - Data is Reactive Data Client. Skills live in `.agents/skills/`.
-- To run against unreleased Data Client, build a sibling `../data-client` checkout (`yarn build`) and run `yarn link:data-client`. It symlinks `node_modules/@data-client/*` without touching `package.json`, and Metro and Jest then resolve React and other bare imports from this app. Any `yarn install` undoes it; `yarn unlink:data-client` does so explicitly. Cloud agent environments (Cursor's `.cursor/environment.json`, Claude's setup script) run `node scripts/data-client.mjs setup`, which also clones, installs, and builds the checkout. With data-client `master` linked, `yarn typecheck` can fail on Data Client API changes that are not released yet.
+- If `node_modules/@data-client/*` are symlinks, you are on an unreleased data-client checkout. Typecheck errors from data-client API changes are expected there. `yarn unlink:data-client` returns to the published version.
 - Do not generate `ios/` or `android/` by hand.
 
 ## Checks

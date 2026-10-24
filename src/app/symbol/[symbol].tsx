@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import SymbolScreen from '@/components/SymbolScreen';
+import SymbolScreen from '@/components/symbol/SymbolScreen';
 
 export default function SymbolRoute() {
   const params = useLocalSearchParams<{ symbol: string }>();

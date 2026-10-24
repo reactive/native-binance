@@ -2,12 +2,17 @@
 // DATA_CLIENT_DIR) instead of the published packages.
 //
 //   link    point node_modules/@data-client/* at the checkout's built packages
+//           (run `yarn build` there first)
 //   unlink  restore the published packages
-//   setup   clone (if missing), install, and build the checkout, then link;
-//           cloud agent environments run this
+//   setup   clone (if missing), install, and build the checkout, then link
 //
 // Unlike `yarn link`, linking leaves package.json and yarn.lock untouched, so
-// any `yarn install` undoes it.
+// any `yarn install` undoes it. While linked, Metro and Jest resolve bare
+// imports from the linked packages against this app (scripts/linkedDataClient.js),
+// so there is one React.
+//
+// Nothing runs this automatically. To opt a cloud agent environment in, call
+// `node scripts/data-client.mjs setup` from its setup script.
 import { execSync } from 'node:child_process';
 import {
   existsSync,

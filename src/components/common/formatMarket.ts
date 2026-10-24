@@ -1,4 +1,4 @@
-import { formatDay } from '@/components/formatDeadline';
+import { formatDay } from '@/components/common/formatDeadline';
 
 function groupThousands(integer: string): string {
   const sign = integer.startsWith('-') ? '-' : '';

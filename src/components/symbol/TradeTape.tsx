@@ -11,9 +11,9 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
-import { hasNewTrades, holdTape } from '@/components/holdTape';
-import { usePlaces } from '@/components/places';
-import { TRADE_ROW_HEIGHT, TradeRow, type TradePalette } from '@/components/TradeRow';
+import { hasNewTrades, holdTape } from '@/components/symbol/holdTape';
+import { usePlaces } from '@/components/symbol/places';
+import { TRADE_ROW_HEIGHT, TradeRow, type TradePalette } from '@/components/symbol/TradeRow';
 import { getTrades, type Trade } from '@/resources/Trade';
 import { getExchangeInfo, MarketSymbol } from '@/resources/Symbol';
 

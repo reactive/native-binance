@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import type { JSX, ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
-import { formatDeadline } from '@/components/formatDeadline';
+import { formatDeadline } from '@/components/common/formatDeadline';
 import {
   Asset,
   getAssetProfile,

@@ -7,9 +7,9 @@ const { packageDirs, resolvesFromRoot } = require('./scripts/linkedDataClient');
 
 const config = getDefaultConfig(__dirname);
 
-// The server bundle keeps `require()` calls that the web client bundle deletes.
-// `expo-sqlite/localStorage/install` guards on `EXPO_OS`, which is not inlined
-// for that bundle, so Metro still resolves the wasm asset. Web never executes it.
+// Dev web still resolves `expo-sqlite/web/worker.ts`, which imports
+// `wa-sqlite.wasm`. Production `expo export -p web` succeeds without this,
+// because that bundle drops the worker import.
 if (!config.resolver.assetExts.includes('wasm')) {
   config.resolver.assetExts.push('wasm');
 }

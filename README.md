@@ -1,8 +1,8 @@
 # Binance Book
 
-Personal Expo app for a Binance spot order book. Expo SDK 58 beta, React Native 0.88 RC, React 19.3.
+Personal Expo app for a Binance spot order book. Expo SDK 58, React Native 0.88, React 19.3.
 
-Day-to-day testing uses Expo Go from the SDK 58 CLI (store builds of Expo Go still track the previous SDK until 58 is stable).
+Store builds of Expo Go do not include SDK 58 yet. Use a development build.
 
 ```bash
 yarn start

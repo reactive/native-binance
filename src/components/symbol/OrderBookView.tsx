@@ -8,8 +8,8 @@ import {
   type TextStyle,
 } from 'react-native';
 
-import { formatPrice, formatSize } from '@/components/formatMarket';
-import { usePlaces, type Places } from '@/components/places';
+import { formatPrice, formatSize } from '@/components/common/formatMarket';
+import { usePlaces, type Places } from '@/components/symbol/places';
 
 export type Level = readonly [price: number, qty: number];
 

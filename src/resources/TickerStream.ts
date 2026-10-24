@@ -107,16 +107,13 @@ export default class TickerStream implements Manager {
     this.sockets.set(TICKER_STREAM, socket);
   }
 
-  /** Each message is a change-set. Writes merge one entity at a time and keep every symbol that arrived while a write was in flight. */
+  /** Each message is a change-set. One write merges the batch and keeps every symbol that arrived while that write was in flight. */
   private flush() {
     if (this.writing || this.pending.size === 0) return;
     const batch = this.pending;
     this.pending = new Map();
     this.writing = true;
-    const writes = [...batch].map(([symbol, row]) =>
-      this.controller.set(Ticker, { symbol }, row),
-    );
-    void Promise.all(writes).finally(() => {
+    void this.controller.set([Ticker], [...batch.values()]).finally(() => {
       this.writing = false;
       if (this.pending.size > 0) this.flush();
     });

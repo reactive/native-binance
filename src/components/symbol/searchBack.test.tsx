@@ -4,7 +4,7 @@ import { NavigationContext } from 'expo-router/build/react-navigation/core/Navig
 import type { NavigationProp } from 'expo-router/build/react-navigation/core/types';
 import { useState, type ReactNode } from 'react';
 
-import { useDismissSearchOnBack } from '@/components/searchBack';
+import { useDismissSearchOnBack } from '@/components/symbol/searchBack';
 
 const back = { type: 'GO_BACK' as const };
 

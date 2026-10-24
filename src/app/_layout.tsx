@@ -28,7 +28,9 @@ export default function RootLayout() {
   return (
     <DataProvider managers={managers}>
       <SilkProvider colorScheme={colorScheme}>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" activityEnabled={1} />
+        </Stack>
       </SilkProvider>
     </DataProvider>
   );

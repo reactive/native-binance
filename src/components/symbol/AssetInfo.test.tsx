@@ -1,3 +1,15 @@
+import { actionTypes, AsyncBoundary, DataProvider, getDefaultManagers } from '@data-client/react';
+import type { Manager } from '@data-client/react';
+import { mockInitialState, MockResolver } from '@data-client/test';
+import { SilkProvider } from '@reactive/silk-native';
+import { Platform, StyleSheet } from 'react-native';
+import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+
+import { formatDeadline } from '@/components/common/formatDeadline';
+import { InstrumentInfo } from '@/components/symbol/InstrumentInfo';
+import { getAssetProfile, getAssets } from '@/resources/Asset';
+import { getExchangeInfo } from '@/resources/Symbol';
+
 jest.mock('@reactive/silk-native', () => {
   const React = require('react');
   const { Text: RNText, View } = require('react-native');
@@ -21,18 +33,6 @@ jest.mock('@reactive/silk-native', () => {
     Skeleton: (props: object) => React.createElement(View, props),
   };
 });
-
-import { actionTypes, AsyncBoundary, DataProvider, getDefaultManagers } from '@data-client/react';
-import type { Manager } from '@data-client/react';
-import { mockInitialState, MockResolver } from '@data-client/test';
-import { SilkProvider } from '@reactive/silk-native';
-import { Platform, StyleSheet } from 'react-native';
-import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-
-import { formatDeadline } from '@/components/formatDeadline';
-import { InstrumentInfo } from '@/components/InstrumentInfo';
-import { getAssetProfile, getAssets } from '@/resources/Asset';
-import { getExchangeInfo } from '@/resources/Symbol';
 
 const { act } = TestRenderer;
 

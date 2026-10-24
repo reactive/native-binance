@@ -1,11 +1,11 @@
 import { renderHook, act } from '@data-client/test';
 
+import { useStreamsDown } from '@/components/common/Reconnecting';
+import { streamStatus } from '@/resources/streamStatus';
+
 jest.mock('@reactive/silk-native', () => ({
   Text: 'Text',
 }));
-
-import { useStreamsDown } from '@/components/Reconnecting';
-import { streamStatus } from '@/resources/streamStatus';
 
 const listed = 'wss://example.test/listed';
 const other = 'wss://example.test/other';

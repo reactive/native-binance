@@ -26,8 +26,8 @@ import {
   type PointerEvent,
   type TextStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useScreenInsets } from '@/components/common/screenInsets';
 import {
   cachedListReady,
   CAPTION_DELAY_MS,
@@ -39,7 +39,7 @@ import {
   intervalLabel,
   periodStart,
   revealAt,
-} from '@/components/chartMotion';
+} from '@/components/chart/chartMotion';
 import {
   labelStops,
   placeCandles,
@@ -51,9 +51,10 @@ import {
   type StepPlan,
   type TravelCandle,
   type TravelPlan,
-} from '@/components/chartTravel';
-import { LoadError } from '@/components/LoadError';
-import { Pill } from '@/components/Pill';
+} from '@/components/chart/chartTravel';
+import { MotionView } from '@/components/chart/MotionView';
+import { LoadError } from '@/components/common/LoadError';
+import { Pill } from '@/components/common/Pill';
 import {
   candleIndexAt,
   candleLayout,
@@ -68,8 +69,8 @@ import {
   plotDeviceShift,
   plotSize,
   READOUT,
-} from '@/components/candleLayout';
-import { decimalsOf, formatCandleTime, formatPrice } from '@/components/formatMarket';
+} from '@/components/chart/candleLayout';
+import { decimalsOf, formatCandleTime, formatPrice } from '@/components/common/formatMarket';
 import { Candle, getCandles, INTERVALS, type CandleInterval } from '@/resources/Candle';
 import { MarketSymbol } from '@/resources/Symbol';
 
@@ -104,6 +105,8 @@ type Axis = Animated.AnimatedInterpolation<number>;
 type Shift = ReturnType<typeof Animated.subtract>;
 
 type PlotMotion = {
+  /** This step's progress. On web it is the shared clock, which also drives `labelOpacity`. */
+  clock: Animated.Value;
   scaleX: Axis;
   translateX: Axis;
   scaleY: Axis;
@@ -162,6 +165,7 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
       readoutOpacity: opacityOf(progress, step.readout),
       shifts,
       motion: {
+        clock: progress,
         scaleX: progress.interpolate({ ...range, outputRange: step.scaleX }),
         translateX: progress.interpolate({ ...range, outputRange: step.translateX }),
         scaleY: progress.interpolate({ ...range, outputRange: step.scaleY }),
@@ -520,7 +524,6 @@ const CandleMarks = memo(function CandleMarks({
   candles,
   placed,
   width,
-  height,
   ratio,
   motion,
   up,
@@ -531,7 +534,6 @@ const CandleMarks = memo(function CandleMarks({
   candles: readonly TravelCandle[];
   placed: readonly CandlePlacement[];
   width: number;
-  height: number;
   ratio: number;
   motion?: PlotMotion;
   up: string;
@@ -542,6 +544,7 @@ const CandleMarks = memo(function CandleMarks({
   const metrics = candleMetrics(width, ratio);
   const wickOffset = (metrics.body - metrics.wick) / 2;
   const minHollow = metrics.wick * 3;
+  // Body and hollow are children of the wick so they paint over it, and draw outside its bounds.
   return (
     <>
       {placed.map((item, index) => {
@@ -549,60 +552,56 @@ const CandleMarks = memo(function CandleMarks({
         const color = item.direction === 'up' ? up : item.direction === 'down' ? down : flat;
         const newest = index === placed.length - 1;
         const bodyLeft = Math.round(item.x * ratio);
-        const slotLeft = bodyLeft - metrics.gap;
-        const bodyTop = Math.round(item.bodyTop * ratio);
+        const wickTop = Math.round(item.wickTop * ratio);
+        const bodyTop = Math.round(item.bodyTop * ratio) - wickTop;
         const bodyH = Math.round(item.bodyHeight * ratio);
         const hollow = item.direction === 'up' && bodyH >= minHollow && metrics.body >= minHollow;
         const tx = motion?.shifts?.get(candle.openTime);
         const covered = motion?.covered?.has(candle.openTime) === true;
         return (
-          <Animated.View
+          <MotionView
             key={candle.openTime}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
             pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: slotLeft,
-              top: 0,
-              width: metrics.slot,
-              height: height * ratio,
-              opacity: covered ? motion?.coveredOpacity : 1,
-              transform: tx ? [{ translateX: tx }] : undefined,
-            }}
-          >
-            <DeviceMark
-              style={{
-                position: 'absolute',
-                left: metrics.gap + wickOffset,
-                top: Math.round(item.wickTop * ratio),
+            style={[
+              styles.mark,
+              {
+                left: bodyLeft + wickOffset,
+                top: wickTop,
                 width: metrics.wick,
                 height: Math.round(item.wickHeight * ratio),
                 backgroundColor: color,
-              }}
-            />
-            <DeviceMark
+              },
+            ]}
+            clock={motion?.clock}
+            opacity={covered ? motion?.coveredOpacity : undefined}
+            translateX={tx}
+          >
+            <View
               testID={newest ? 'candle-last' : undefined}
-              style={{
-                position: 'absolute',
-                left: metrics.gap,
-                top: bodyTop,
-                width: metrics.body,
-                height: bodyH,
-                backgroundColor: color,
-              }}
+              pointerEvents="none"
+              style={[
+                styles.mark,
+                { left: -wickOffset, top: bodyTop, width: metrics.body, height: bodyH, backgroundColor: color },
+              ]}
             />
             {hollow ?
-              <DeviceMark
-                style={{
-                  position: 'absolute',
-                  left: metrics.gap + metrics.wick,
-                  top: bodyTop + metrics.wick,
-                  width: metrics.body - metrics.wick * 2,
-                  height: bodyH - metrics.wick * 2,
-                  backgroundColor: surface,
-                }}
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.mark,
+                  {
+                    left: metrics.wick - wickOffset,
+                    top: bodyTop + metrics.wick,
+                    width: metrics.body - metrics.wick * 2,
+                    height: bodyH - metrics.wick * 2,
+                    backgroundColor: surface,
+                  },
+                ]}
               />
             : null}
-          </Animated.View>
+          </MotionView>
         );
       })}
     </>
@@ -658,27 +657,20 @@ const CandlePlot = memo(function CandlePlot({
     if (candle.high > seriesHigh) seriesHigh = candle.high;
     if (candle.low < seriesLow) seriesLow = candle.low;
   }
-  const labelStyle = motion?.labelOpacity ? { opacity: motion.labelOpacity } : undefined;
   const scrubbed = scrubIndex != null ? placed[scrubIndex] : undefined;
   const scrubCandle = scrubbed && scrubIndex != null ? candles[scrubIndex] : undefined;
 
   return (
     <>
-      <Animated.View
+      <MotionView
         pointerEvents="none"
-        style={{
-          width,
-          height,
-          opacity: motion?.layerOpacity,
-          transform: motion
-            ? [
-                { translateX: motion.translateX },
-                { translateY: motion.translateY },
-                { scaleX: motion.scaleX },
-                { scaleY: motion.scaleY },
-              ]
-            : undefined,
-        }}
+        style={{ width, height }}
+        clock={motion?.clock}
+        opacity={motion?.layerOpacity}
+        translateX={motion?.translateX}
+        translateY={motion?.translateY}
+        scaleX={motion?.scaleX}
+        scaleY={motion?.scaleY}
       >
         <View
           pointerEvents="none"
@@ -696,7 +688,6 @@ const CandlePlot = memo(function CandlePlot({
             candles={candles}
             placed={placed}
             width={width}
-            height={height}
             ratio={ratio}
             motion={motion}
             up={up}
@@ -719,22 +710,22 @@ const CandlePlot = memo(function CandlePlot({
             />
           : null}
         </View>
-      </Animated.View>
+      </MotionView>
       {showLabels ?
         <>
           <View pointerEvents="none" style={[styles.band, styles.bandTop]}>
-            <Animated.View style={labelStyle}>
+            <MotionView clock={motion?.clock} opacity={motion?.labelOpacity}>
               <Text role="caption" tone="secondary" style={TABULAR} testID="series-high">
                 {formatPrice(seriesHigh, places)}
               </Text>
-            </Animated.View>
+            </MotionView>
           </View>
           <View pointerEvents="none" style={[styles.band, styles.bandBottom]}>
-            <Animated.View style={labelStyle}>
+            <MotionView clock={motion?.clock} opacity={motion?.labelOpacity}>
               <Text role="caption" tone="secondary" style={TABULAR} testID="series-low">
                 {formatPrice(seriesLow, places)}
               </Text>
-            </Animated.View>
+            </MotionView>
           </View>
         </>
       : null}
@@ -852,14 +843,13 @@ function TravelReadout({ symbol, session }: { symbol: string; session: Session }
                 const candle = step.candles[step.candles.length - 1];
                 if (!candle) return null;
                 return (
-                  <Animated.View
+                  <MotionView
                     key={step.interval}
                     accessibilityElementsHidden
                     importantForAccessibility="no-hide-descendants"
-                    style={[
-                      index === 0 ? null : styles.readoutLayer,
-                      { opacity: session.steps[index].readoutOpacity },
-                    ]}
+                    style={index === 0 ? null : styles.readoutLayer}
+                    clock={session.steps[index].progress}
+                    opacity={session.steps[index].readoutOpacity}
                   >
                     <Text
                       role="caption"
@@ -869,7 +859,7 @@ function TravelReadout({ symbol, session }: { symbol: string; session: Session }
                     >
                       {formatPrice(price(candle, label), places)}
                     </Text>
-                  </Animated.View>
+                  </MotionView>
                 );
               })}
             </View>
@@ -1830,7 +1820,7 @@ function ChartBody({
 }): JSX.Element {
   const controller = useController();
   const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   const plot = plotSize(width, height, insets.top, insets.bottom);
   const openedAt = useRef(interval).current;
   const hadList = useRef(listExists(controller, symbol, openedAt)).current;
@@ -1942,6 +1932,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
+  },
+  mark: {
+    position: 'absolute',
+    overflow: 'visible',
   },
   scrubLabel: {
     position: 'absolute',

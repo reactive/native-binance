@@ -1,6 +1,6 @@
 import { useQuery } from '@data-client/react';
 import { Heading, Input, Text, useTheme } from '@reactive/silk-native';
-import { router, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, type JSX } from 'react';
 import {
   FlatList,
@@ -10,10 +10,10 @@ import {
   type ListRenderItem,
 } from 'react-native';
 
-import { holdOrder, idleHold, type HoldEvent } from '@/components/holdOrder';
-import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/MarketRow';
-import { Pill } from '@/components/Pill';
-import { Reconnecting } from '@/components/Reconnecting';
+import { holdOrder, idleHold, type HoldEvent } from '@/components/common/holdOrder';
+import { MARKET_ROW_HEIGHT, MarketRow } from '@/components/common/MarketRow';
+import { Pill } from '@/components/common/Pill';
+import { Reconnecting } from '@/components/common/Reconnecting';
 import { getMarkets, MARKET_QUOTES, type MarketSort } from '@/resources/Markets';
 import { TICKER_STREAM } from '@/resources/streams';
 
@@ -27,10 +27,6 @@ const ROW = 44;
 const FIELD_WIDTH = 172;
 const TICKER_URLS = [TICKER_STREAM];
 const GUTTER = 12;
-
-function openBook(symbol: string) {
-  router.push(`/symbol/${symbol}` as Href);
-}
 
 function getItemLayout(_: ArrayLike<string> | null | undefined, index: number) {
   return { length: MARKET_ROW_HEIGHT, offset: MARKET_ROW_HEIGHT * index, index };
@@ -135,6 +131,13 @@ export function MarketList({
   /** Collection order, and only while Watching is selected. Volume sort must not change it. */
   watchKey: string;
 }): JSX.Element {
+  const router = useRouter();
+  const openBook = useCallback(
+    (symbol: string) => {
+      router.push({ pathname: '/symbol/[symbol]', params: { symbol } });
+    },
+    [router],
+  );
   const q = query.trim().toLowerCase();
   const args = useMemo(() => ({ quote, sort, q, watching }), [quote, sort, q, watching]);
   const rows = useQuery(getMarkets, args) ?? [];
@@ -170,7 +173,7 @@ export function MarketList({
   const ids = hold.committed ?? liveIds;
   const renderItem = useCallback<ListRenderItem<string>>(
     ({ item }) => <MarketRow symbol={item} onPress={openBook} />,
-    [],
+    [openBook],
   );
 
   return (

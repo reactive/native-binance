@@ -1,6 +1,5 @@
-import { actionTypes } from '@data-client/react';
+import { actionTypes, useSuspense } from '@data-client/react';
 import type { Controller } from '@data-client/react';
-import { useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 import { act } from 'react';
 
@@ -252,7 +251,7 @@ it('resyncs the first diff after reconnect without emptying the book', async () 
 });
 
 it('waits out a failed resync instead of refetching on every diff', async () => {
-  const { result, frame, stream, fetches, releaseSnapshot, rejectSnapshot, unsubscribe } =
+  const { result, frame, stream, fetches, releaseSnapshot, rejectSnapshot } =
     await mount(100);
   jest.useFakeTimers();
   try {
