@@ -31,7 +31,7 @@ function rows(tree: ReactTestRenderer, testID: string): string[] {
     .map(node => node.props.accessibilityLabel);
 }
 
-it('renders only the levels that fit its height, best next to the spread', () => {
+it('mounts a screenful of levels first, best next to the spread', () => {
   let tree!: ReactTestRenderer;
   act(() => {
     tree = TestRenderer.create(
@@ -45,18 +45,12 @@ it('renders only the levels that fit its height, best next to the spread', () =>
       />,
     );
   });
-  // 28px axis, then 300px a side: nine full 32px rows and one clipped.
-  act(() => {
-    tree.root
-      .findByProps({ testID: 'book-depth' })
-      .props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 628 } } });
-  });
 
   const asks = rows(tree, 'asks');
   const bids = rows(tree, 'bids');
-  expect(asks).toHaveLength(10);
-  expect(bids).toHaveLength(10);
+  expect(asks).toHaveLength(12);
+  expect(bids).toHaveLength(12);
   expect(asks[0]).toBe('Ask 101, size 1');
   expect(bids[0]).toBe('Bid 100, size 1');
-  expect(bids[9]).toBe('Bid 91, size 1');
+  expect(bids[11]).toBe('Bid 89, size 1');
 });

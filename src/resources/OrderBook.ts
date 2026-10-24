@@ -5,6 +5,11 @@ import { VisionEndpoint } from './hosts';
 export type Level = [price: number, qty: number];
 
 const BOOK_LIMIT = 100;
+/**
+ * Levels kept per side. Diffs only carry changed levels, so a dropped level that is still live
+ * never comes back; ten snapshots deep leaves room for price to walk before the book thins out.
+ */
+export const BOOK_DEPTH = BOOK_LIMIT * 10;
 
 function parseLevels(levels: unknown): Level[] {
   if (!Array.isArray(levels)) return [];
@@ -130,8 +135,8 @@ export class OrderBook extends Entity {
 }
 
 /**
- * Applies a diff and keeps the `BOOK_LIMIT` levels nearest the spread. The diff stream covers the
- * whole book, but the snapshot only knows that many levels, so deeper ones would only pile up.
+ * Applies a diff and keeps the `BOOK_DEPTH` levels nearest the spread. The diff stream covers the
+ * whole book, so without a bound every level it ever touched would pile up and be re-sorted.
  * Unchanged levels keep their tuples.
  */
 function mergeLevels(
@@ -155,7 +160,7 @@ function mergeLevels(
   if (!changed) return levels as Level[];
   const next = Array.from(byPrice.values());
   next.sort((a, b) => (descending ? b[0] - a[0] : a[0] - b[0]));
-  if (next.length > BOOK_LIMIT) next.length = BOOK_LIMIT;
+  if (next.length > BOOK_DEPTH) next.length = BOOK_DEPTH;
   return next;
 }
 

@@ -1,7 +1,7 @@
 import { useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 
-import { getOrderBook, OrderBook } from './OrderBook';
+import { BOOK_DEPTH, getOrderBook, OrderBook } from './OrderBook';
 import { actWrite } from './testSupport';
 
 function mount(response: object) {
@@ -92,30 +92,45 @@ it('merges a depth diff and ignores stale or gapped updates', async () => {
 });
 
 it('keeps the levels nearest the spread and reuses unchanged ones', async () => {
-  const levels = (from: number, step: number) =>
-    Array.from({ length: 100 }, (_, i) => [String(from + i * step), '1']);
+  const levels = (from: number, step: number, count: number) =>
+    Array.from({ length: count }, (_, i) => [String(from + i * step), '1']);
   const { result, controller } = mount({
     lastUpdateId: 10,
-    bids: levels(1000, -1),
-    asks: levels(1001, 1),
+    bids: levels(1000, -1, 100),
+    asks: levels(1001, 1, 100),
   });
   const before = result.current.bids;
 
+  // Diffs past the snapshot fill the side out to BOOK_DEPTH; deeper ones are dropped.
   await setBook(controller, {
     U: 11,
     u: 11,
-    b: [
-      ['1000.5', '2'],
-      ['500', '3'],
-    ],
-    a: [['5000', '3']],
+    b: [['1000.5', '2'], ...levels(900, -1, BOOK_DEPTH)],
+    a: [],
   });
 
   const { bids, asks } = result.current;
-  expect(bids).toHaveLength(100);
+  expect(bids).toHaveLength(BOOK_DEPTH);
   expect(bids[0]).toEqual([1000.5, 2]);
   expect(bids[1]).toBe(before[0]);
-  expect(bids[99][0]).toBe(902);
+  expect(bids[BOOK_DEPTH - 1][0]).toBe(1000 - (BOOK_DEPTH - 2));
   expect(asks).toHaveLength(100);
-  expect(asks[99][0]).toBe(1100);
+});
+
+it('keeps live levels past the snapshot when nearer ones are removed', async () => {
+  const { result, controller } = mount({
+    lastUpdateId: 10,
+    bids: Array.from({ length: 100 }, (_, i) => [String(1000 - i), '1']),
+    asks: [['1001', '1']],
+  });
+
+  await setBook(controller, { U: 11, u: 11, b: [['1001', '1']], a: [] });
+  await setBook(controller, {
+    U: 12,
+    u: 12,
+    b: Array.from({ length: 100 }, (_, i) => [String(1001 - i), '0']),
+    a: [],
+  });
+
+  expect(result.current.bids).toEqual([[901, 1]]);
 });

@@ -499,48 +499,54 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
 
   return (
     <SafeScreen style={[styles.safe, { backgroundColor: theme.semantic.color.surface }]}>
-      {committed ? <TickerFeed /> : null}
-      {/* The search sheet covers the screen. Hidden, the screen keeps its state but drops its
-          stream subscriptions and renders, and resyncs when the sheet closes. */}
-      <Activity mode={searching ? 'hidden' : 'visible'}>
-        <View style={styles.screen}>
-          <TopBar symbol={symbol} retry={retry} committed={committed} onSearch={openSearch} />
-          {committed ?
-            <AsyncBoundary
-              key={retry}
-              fallback={<PriceStripFallback streams={streams} />}
-              errorComponent={() => <PriceStripFallback streams={streams} />}
-            >
-              <PriceStrip symbol={symbol} streams={streams} scrub={scrub} />
-            </AsyncBoundary>
-          : <PriceStripFallback streams={streams} />}
-          <Segments segment={segment} onSelect={selectSegment} />
-          <View style={styles.body} testID="symbol-body">
-            {!committed ?
-              placeholder
-            : <Suspense key={retry} fallback={placeholder}>
-                {!list ?
-                  <ChartBody
-                    symbol={symbol}
-                    interval={chartInterval}
-                    onInterval={setChartInterval}
-                    onRetry={retryLoad}
-                    retry={retry}
-                    onHold={setChartHold}
-                    onScrub={onScrub}
-                  />
-                : <ErrorBoundary
-                    key={shown}
-                    fallbackComponent={() => <LoadError what={list.what(symbol)} onRetry={retryLoad} />}
-                  >
+      <View
+        pointerEvents={searching ? 'none' : 'auto'}
+        accessibilityElementsHidden={searching}
+        importantForAccessibility={searching ? 'no-hide-descendants' : 'auto'}
+        style={styles.screen}
+      >
+        <TopBar symbol={symbol} retry={retry} committed={committed} onSearch={openSearch} />
+        {committed ? <TickerFeed /> : null}
+        {committed ?
+          <AsyncBoundary
+            key={retry}
+            fallback={<PriceStripFallback streams={streams} />}
+            errorComponent={() => <PriceStripFallback streams={streams} />}
+          >
+            <PriceStrip symbol={symbol} streams={streams} scrub={scrub} />
+          </AsyncBoundary>
+        : <PriceStripFallback streams={streams} />}
+        <Segments segment={segment} onSelect={selectSegment} />
+        <View style={styles.body} testID="symbol-body">
+          {!committed ?
+            placeholder
+          : <Suspense key={retry} fallback={placeholder}>
+              {!list ?
+                <ChartBody
+                  symbol={symbol}
+                  interval={chartInterval}
+                  onInterval={setChartInterval}
+                  onRetry={retryLoad}
+                  retry={retry}
+                  onHold={setChartHold}
+                  onScrub={onScrub}
+                />
+              : <ErrorBoundary
+                  key={shown}
+                  fallbackComponent={() => <LoadError what={list.what(symbol)} onRetry={retryLoad} />}
+                >
+                  {/* The search sheet covers the screen; hidden, the list keeps its state but drops
+                      its stream and renders, and resyncs when the sheet closes. Not the chart:
+                      its effects' cleanup ends a transition in flight for good. */}
+                  <Activity mode={searching ? 'hidden' : 'visible'}>
                     <list.Body symbol={symbol} />
-                  </ErrorBoundary>
-                }
-              </Suspense>
-            }
-          </View>
+                  </Activity>
+                </ErrorBoundary>
+              }
+            </Suspense>
+          }
         </View>
-      </Activity>
+      </View>
       {searching ? <SymbolSearch onChoose={chooseSymbol} onDismiss={closeSearch} /> : null}
     </SafeScreen>
   );
