@@ -2,7 +2,7 @@ import { DataProvider, getDefaultManagers, useController } from '@data-client/re
 import type { Controller } from '@data-client/react';
 import { mockInitialState, MockResolver } from '@data-client/test';
 import { useState } from 'react';
-import { AccessibilityInfo, Animated, Dimensions, PixelRatio, StyleSheet } from 'react-native';
+import { Animated, Dimensions, PixelRatio, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TestRenderer, { type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
@@ -13,6 +13,8 @@ import { formatCandleTime } from '@/components/common/formatMarket';
 import { getCandles, upsertCandle, type CandleInterval } from '@/resources/Candle';
 import CandleStream from '@/resources/CandleStream';
 import { FakeSocket, installFakeSocket } from '@/resources/testSocket';
+
+let mockReducedMotion = false;
 
 jest.mock('@reactive/silk-native', () => {
   const React = require('react');
@@ -35,7 +37,7 @@ jest.mock('@reactive/silk-native', () => {
   return {
     SilkProvider: ({ children }: { children: React.ReactNode }) => children,
     useTheme: () => ({ theme }),
-    useReducedMotion: () => false,
+    useReducedMotion: () => mockReducedMotion,
     Text: ({ children, ...rest }: { children?: React.ReactNode }) =>
       React.createElement(RNText, rest, children),
     Button: ({
@@ -328,14 +330,7 @@ afterEach(() => {
   restoreSocket();
   jest.useRealTimers();
   jest.restoreAllMocks();
-  // spyOn on the preset's jest.fn does not register a restore, so
-  // mockResolvedValue(true) would stick for every later test.
-  (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockImplementation(() =>
-    Promise.resolve(false),
-  );
-  (AccessibilityInfo.addEventListener as jest.Mock).mockImplementation(() => ({
-    remove() {},
-  }));
+  mockReducedMotion = false;
 });
 
 const current15 = () => seed('15m', period(NOW, '15m'), 111);
@@ -696,8 +691,7 @@ it('does not paint an expired list when Chart mounts again', async () => {
 });
 
 it('cuts to a ready interval in one commit when reduce motion is on', async () => {
-  jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
-  jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove() {} });
+  mockReducedMotion = true;
   mount({
     interval: '15m',
     seeds: [current15(), seed('1h', period(NOW, '1h'), 222)],

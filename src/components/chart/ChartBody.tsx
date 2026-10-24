@@ -1,5 +1,5 @@
 import { AsyncBoundary, useCache, useController, useLive, useQuery } from '@data-client/react';
-import { Text, useTheme } from '@reactive/silk-native';
+import { Text, useReducedMotion, useTheme } from '@reactive/silk-native';
 import {
   forwardRef,
   memo,
@@ -15,7 +15,6 @@ import {
   type Ref,
 } from 'react';
 import {
-  AccessibilityInfo,
   Animated,
   PixelRatio,
   Platform,
@@ -253,22 +252,6 @@ function clearStaging(session: Session | null) {
 }
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
-
-function useReduceMotion(): boolean {
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    let live = true;
-    AccessibilityInfo.isReduceMotionEnabled().then(value => {
-      if (live) setEnabled(value);
-    });
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setEnabled);
-    return () => {
-      live = false;
-      sub.remove();
-    };
-  }, []);
-  return enabled;
-}
 
 function snapshotCandles(candles: readonly Candle[]): Candle[] {
   return candles.map(candle => Object.assign(new Candle(), candle));
@@ -1003,7 +986,7 @@ function ChartFrame({
   insetLeft: number;
 }): JSX.Element {
   const controller = useController();
-  const reduce = useReduceMotion();
+  const reduce = useReducedMotion();
   const bootKind = useRef(boot).current;
   const readyAtStart = useRef(
     bootKind !== 'switch' &&
