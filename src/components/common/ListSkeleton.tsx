@@ -11,7 +11,7 @@ const LEFT = ['42%', '36%', '48%', '40%', '33%', '45%', '38%'] as const;
 const RIGHT = ['22%', '28%', '18%', '25%', '20%', '30%', '24%'] as const;
 
 /**
- * Rows of ghost values with one shared pulse.
+ * Rows of ghost values with one shared pulse, matching Silk's Skeleton (borderSubtle, 1 → 0.55 on the loop token).
  * One animated layer, so web writes a single opacity per frame instead of re-rendering each bar.
  */
 export function ListSkeleton({ rowHeight, testID }: { rowHeight: number; testID?: string }): JSX.Element {
@@ -27,7 +27,7 @@ export function ListSkeleton({ rowHeight, testID }: { rowHeight: number; testID?
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.5, duration: loopMs / 2, useNativeDriver: NATIVE_DRIVER }),
+        Animated.timing(pulse, { toValue: 0.55, duration: loopMs / 2, useNativeDriver: NATIVE_DRIVER }),
         Animated.timing(pulse, { toValue: 1, duration: loopMs / 2, useNativeDriver: NATIVE_DRIVER }),
       ]),
     );
