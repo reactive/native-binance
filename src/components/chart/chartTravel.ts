@@ -1,4 +1,4 @@
-import { criticalSpring, type SpringConfig } from '@/components/common/spring';
+import { criticalSpring, springAt, type Spring, type SpringConfig } from '@/components/common/spring';
 import { INTERVALS, type CandleInterval } from '@/resources/Candle';
 
 import { PLOT_PAD, candleMetrics, type CandlePlacement } from './candleLayout';
@@ -179,8 +179,10 @@ export function travelSpring(durationMs: number): SpringConfig {
   return criticalSpring((OMEGA_TAU * 1000) / durationMs);
 }
 
+/** The travel spring's progress from rest at `u` = elapsed / duration. The planner and the motion share this curve. */
 export function springPosition(u: number): number {
-  return 1 - (1 + OMEGA_TAU * u) * Math.exp(-OMEGA_TAU * u);
+  const fromRest: Spring = { config: travelSpring(1000), target: 1, position: 0, velocity: 0, time: 0 };
+  return springAt(fromRest, u * 1000).position;
 }
 
 export function progressAtQ(q: number): number {

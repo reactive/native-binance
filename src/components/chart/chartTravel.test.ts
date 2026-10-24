@@ -1,5 +1,6 @@
 import { Animated } from 'react-native';
 
+import { springAt } from '@/components/common/spring';
 import { INTERVALS, type CandleInterval } from '@/resources/Candle';
 
 import { periodEnd, periodStart } from './chartMotion';
@@ -9,6 +10,7 @@ import {
   ladderSteps,
   markCentre,
   markRight,
+  OMEGA_TAU,
   periodLength,
   UPDATE_BUDGET_US,
   UPDATE_US,
@@ -357,6 +359,10 @@ it('uses the sine table, the spring, and early-rest thresholds', () => {
   expect(progressAtQ(1)).toBeCloseTo(springPosition(1), 6);
   expect(springPosition(1)).toBeCloseTo(0.99, 2);
   expect(travelSpring(340).stiffness).toBeCloseTo(381, 0);
+  // The planner's curve is the spring that plays, at any duration.
+  const played = { config: travelSpring(340), target: 1, position: 0, velocity: 0, time: 0 };
+  for (const u of [0.1, 0.5, 1]) expect(springAt(played, u * 340).position).toBeCloseTo(springPosition(u), 9);
+  expect(springPosition(0.5)).toBeCloseTo(1 - (1 + OMEGA_TAU / 2) * Math.exp(-OMEGA_TAU / 2), 9);
   const plan = assume('1m', '1M');
   for (const step of plan.steps) {
     expect(step.forwardThreshold).toBeGreaterThanOrEqual(0.01);
