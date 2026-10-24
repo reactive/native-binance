@@ -938,6 +938,31 @@ it('reverses a travel without a fetch and fades a third pill', async () => {
   expect(present('candle-series-4h')).toBe(false);
 });
 
+it('travels out again when the pill is tapped back during a reverse', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m'), series('1h')],
+    delay: () => 0,
+    resolve: params => [row(period(Date.now(), params.interval), 222)],
+  });
+  await settle();
+  const before = fetches.length;
+  await press('interval-1h');
+  await advance(1);
+  await advance(60);
+  await press('interval-15m');
+  await advance(60);
+  await press('interval-1h');
+  expect(selected('1h')).toBe(true);
+  await advance(90);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(true);
+  await advance(1000);
+  expect(present('candle-series-15m')).toBe(false);
+  expect(present('candle-series-1h')).toBe(true);
+  expect(fetches.slice(before)).not.toContain('1h');
+});
+
 it('settles a resize during reverse on the interval the pill shows', async () => {
   mount({
     interval: '15m',

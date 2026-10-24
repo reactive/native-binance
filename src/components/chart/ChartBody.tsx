@@ -43,7 +43,9 @@ import {
   labelStops,
   placeCandles,
   planTravel,
+  REST_SPEED,
   rowFetchOrder,
+  springPosition,
   travelSpring,
   type PriceDomain,
   type StepId,
@@ -56,6 +58,7 @@ import { MotionView } from '@/components/common/MotionView';
 import { NATIVE_DRIVER } from '@/components/common/motionStyle';
 import { LoadError } from '@/components/common/LoadError';
 import { Pill } from '@/components/common/Pill';
+import { animateSpring, retarget, springAt, timeToReach, type Spring } from '@/components/common/spring';
 import {
   candleIndexAt,
   candleLayout,
@@ -128,7 +131,8 @@ type Session = {
   origin: readonly Candle[];
   steps: StepGraph[];
   clock: Animated.Value | null;
-  reverse: boolean;
+  /** Travel progress. Its target is 1 toward `plan.to` and 0 back toward `plan.from`. */
+  spring: Spring;
   timers: ReturnType<typeof setTimeout>[];
 };
 
@@ -187,43 +191,41 @@ function buildSession(plan: TravelPlan, origin: readonly Candle[]): Session {
     origin,
     steps,
     clock,
-    reverse: false,
+    spring: { config: travelSpring(plan.duration), target: 1, position: 0, velocity: 0, time: Date.now() },
     timers: [],
   };
 }
 
-function runSpring(
-  progress: Animated.Value,
-  toValue: number,
-  duration: number,
-  threshold: number,
-  onEnd: (finished: boolean) => void,
-) {
+function runSpring(progress: Animated.Value, spring: Spring, threshold: number, onEnd: (finished: boolean) => void) {
   try {
-    Animated.spring(progress, {
-      toValue,
-      velocity: 0,
-      ...travelSpring(duration, threshold),
+    animateSpring(progress, spring, {
+      restDisplacement: threshold,
+      restSpeed: REST_SPEED,
+      overshootClamping: true,
       useNativeDriver: NATIVE_DRIVER,
     }).start(({ finished }) => onEnd(finished));
   } catch {
-    progress.setValue(toValue);
+    progress.setValue(spring.target);
     onEnd(true);
   }
 }
 
-function startClocks(session: Session, toValue: number, onEnd: (finished: boolean) => void) {
-  const { plan } = session;
+/** The step whose clock rests last in the spring's direction. Native steps out of view rest early. */
+function driverStep(session: Session): number {
+  return session.spring.target === 1 ? session.steps.length - 1 : 0;
+}
+
+function startClocks(session: Session, onEnd: (finished: boolean) => void) {
+  const { plan, spring } = session;
+  const forward = spring.target === 1;
   if (session.clock) {
-    const threshold = toValue === 0 ? 0.0001 : 0.01;
-    runSpring(session.clock, toValue, plan.duration, threshold, onEnd);
+    runSpring(session.clock, spring, forward ? 0.01 : 0.0001, onEnd);
     return;
   }
-  const driver = toValue === 0 ? 0 : plan.steps.length - 1;
+  const driver = driverStep(session);
   session.steps.forEach((graph, index) => {
     const step = plan.steps[index];
-    const threshold = toValue === 0 ? step.reverseThreshold : step.forwardThreshold;
-    runSpring(graph.progress, toValue, plan.duration, threshold, finished => {
+    runSpring(graph.progress, spring, forward ? step.forwardThreshold : step.reverseThreshold, finished => {
       if (index === driver) onEnd(finished);
     });
   });
@@ -235,9 +237,9 @@ function stopClocks(session: Session | null, onTarget: (value: number) => void) 
     session.clock.stopAnimation(value => onTarget(typeof value === 'number' ? value : 0));
     return;
   }
-  const target = session.steps[session.steps.length - 1].progress;
+  const driver = session.steps[driverStep(session)].progress;
   for (const graph of session.steps) {
-    if (graph.progress === target) {
+    if (graph.progress === driver) {
       graph.progress.stopAnimation(value => onTarget(typeof value === 'number' ? value : 0));
     } else {
       graph.progress.stopAnimation();
@@ -1205,19 +1207,54 @@ function ChartFrame({
     setPhase({ kind: 'live', interval });
   }, []);
 
+  /** Mounts each step as the forward spring nears it. `mountAt` is timed for a spring from rest. */
   const stageSession = useCallback((session: Session) => {
-    const initial = session.plan.steps.flatMap((step, index) => (step.mountAt <= 0 ? [index] : []));
-    setShown(initial);
-    session.plan.steps.forEach((step, index) => {
-      if (step.mountAt <= 0) return;
+    const { plan, spring } = session;
+    const now = Date.now();
+    const position = springAt(spring, now).position;
+    const mount = (index: number) => {
+      attachShifts(session.steps[index], plan.steps[index]);
+      setShown(current => (current.includes(index) ? current : [...current, index]));
+    };
+    plan.steps.forEach((step, index) => {
+      const level = springPosition(step.mountAt / plan.duration);
+      const delay = step.mountAt <= 0 || position >= level ? 0 : (timeToReach(spring, level) ?? 0) - (now - spring.time);
+      if (delay <= 0) {
+        mount(index);
+        return;
+      }
       const timer = setTimeout(() => {
-        if (sessionRef.current !== session) return;
-        attachShifts(session.steps[index], step);
-        setShown(current => (current.includes(index) ? current : [...current, index]));
-      }, step.mountAt);
+        if (sessionRef.current === session) mount(index);
+      }, delay);
       session.timers.push(timer);
     });
   }, []);
+
+  const runTravel = useCallback(
+    (session: Session) => {
+      const { target } = session.spring;
+      if (target === 1) stageSession(session);
+      startClocks(session, finished => {
+        if (!finished || session.spring.target !== target || phaseRef.current.kind !== 'travel') return;
+        finishTravel(target === 1 ? session.plan.to : session.plan.from);
+      });
+    },
+    [finishTravel, stageSession],
+  );
+
+  /** Pulls the travel toward one end from where it is on screen, at the speed it has. */
+  const steerTravel = useCallback(
+    (session: Session, target: 0 | 1) => {
+      clearStaging(session);
+      onHoldRef.current(target === 1 ? session.plan.from : null);
+      stopClocks(session, position => {
+        if (sessionRef.current !== session) return;
+        session.spring = { ...retarget(session.spring, target, Date.now()), position };
+        runTravel(session);
+      });
+    },
+    [runTravel],
+  );
 
   const onWarm = useCallback(
     (interval: CandleInterval) => {
@@ -1255,21 +1292,10 @@ function ChartFrame({
 
       if (current.kind === 'travel') {
         const session = current.session;
-        if (next === session.plan.from) {
-          session.reverse = true;
-          clearStaging(session);
-          onHoldRef.current(null);
-          stopClocks(session, value => {
-            if (session.clock) session.clock.setValue(value);
-            else for (const graph of session.steps) graph.progress.setValue(value);
-            startClocks(session, 0, finished => {
-              if (!finished || !session.reverse || phaseRef.current.kind !== 'travel') return;
-              finishTravel(session.plan.from);
-            });
-          });
+        if (next === session.plan.from || next === session.plan.to) {
+          steerTravel(session, next === session.plan.to ? 1 : 0);
           return;
         }
-        session.reverse = false;
         clearStaging(session);
         stopClocks(session, () => {});
         setPhase({ kind: 'travel-out', session });
@@ -1409,14 +1435,11 @@ function ChartFrame({
               const session = buildSession(decided.plan, origin);
               sessionRef.current = session;
               shell.setValue(1);
-              stageSession(session);
               const traveling: Phase = { kind: 'travel', session };
               phaseRef.current = traveling;
               setPhase(traveling);
-              startClocks(session, 1, finished => {
-                if (!finished || session.reverse || phaseRef.current.kind !== 'travel') return;
-                finishTravel(session.plan.to);
-              });
+              setShown([]);
+              runTravel(session);
             }, 0);
             return;
           }
@@ -1439,7 +1462,7 @@ function ChartFrame({
         scheduleReveal(next);
       }
     },
-    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, finishTravel, onFadeDone, onInterval, scheduleReveal, shell, stageSession, symbol],
+    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, onFadeDone, onInterval, runTravel, scheduleReveal, shell, steerTravel, symbol],
   );
 
   const onLayout = useCallback(() => {

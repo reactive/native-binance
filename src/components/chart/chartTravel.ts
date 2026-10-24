@@ -1,3 +1,4 @@
+import { criticalSpring, springAt, type Spring, type SpringConfig } from '@/components/common/spring';
 import { INTERVALS, type CandleInterval } from '@/resources/Candle';
 
 import { PLOT_PAD, candleMetrics, type CandlePlacement } from './candleLayout';
@@ -6,6 +7,7 @@ import { intervalMs, periodEnd, periodStart } from './chartMotion';
 /** Critically damped clock reaches p ≈ 0.99 at t = D. */
 export const OMEGA_TAU = 6.638;
 export const MIN_SCALE = 0.4;
+/** Speed never holds a travel clock that is close enough, so a layer out of view stops updating. */
 export const REST_SPEED = 1e6;
 /** Mean Gregorian month. The month axis is 22px per this length, not the forming month. */
 export const MEAN_MONTH_DAYS = 30.436875;
@@ -172,20 +174,17 @@ export function travelDuration(k: number): number {
   return Math.min(900, raw);
 }
 
-export function travelSpring(durationMs: number, restDisplacementThreshold: number) {
-  const omega = (OMEGA_TAU * 1000) / durationMs;
-  return {
-    mass: 1,
-    stiffness: omega * omega,
-    damping: 2 * omega,
-    overshootClamping: true as const,
-    restDisplacementThreshold,
-    restSpeedThreshold: REST_SPEED,
-  };
+/** From rest, the travel spring passes p ≈ 0.99 at `durationMs`. */
+export function travelSpring(durationMs: number): SpringConfig {
+  return criticalSpring((OMEGA_TAU * 1000) / durationMs);
 }
 
+/** A one-second travel from rest. Any duration is this curve in normalized time. */
+const FROM_REST: Spring = { config: travelSpring(1000), target: 1, position: 0, velocity: 0, time: 0 };
+
+/** The travel spring's progress from rest at `u` = elapsed / duration. The planner and the motion share this curve. */
 export function springPosition(u: number): number {
-  return 1 - (1 + OMEGA_TAU * u) * Math.exp(-OMEGA_TAU * u);
+  return springAt(FROM_REST, u * 1000).position;
 }
 
 export function progressAtQ(q: number): number {
