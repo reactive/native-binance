@@ -16,13 +16,16 @@ export function criticalSpring(omega: number): SpringConfig {
   return { mass: 1, stiffness: omega * omega, damping: 2 * omega };
 }
 
+/** Undamped angular frequency (rad/s) and damping ratio. */
+function oscillator({ stiffness, damping, mass }: SpringConfig): { omega: number; zeta: number } {
+  return { omega: Math.sqrt(stiffness / mass), zeta: damping / (2 * Math.sqrt(stiffness * mass)) };
+}
+
 export function springAt(spring: Spring, time: number): SpringState {
-  const { stiffness, damping, mass } = spring.config;
   const t = Math.max(0, time - spring.time) / 1000;
   const x0 = spring.position - spring.target;
   const v0 = spring.velocity;
-  const omega = Math.sqrt(stiffness / mass);
-  const zeta = damping / (2 * Math.sqrt(stiffness * mass));
+  const { omega, zeta } = oscillator(spring.config);
   let x: number;
   let v: number;
   if (Math.abs(zeta - 1) < 1e-6) {
@@ -57,9 +60,8 @@ export function retarget(spring: Spring, target: number, time: number): Spring {
 }
 
 /** Slowest exponential decay rate, in 1/s. Past 12 time constants the motion is below 1e-5 of its size. */
-function decayRate({ stiffness, damping, mass }: SpringConfig): number {
-  const omega = Math.sqrt(stiffness / mass);
-  const zeta = damping / (2 * Math.sqrt(stiffness * mass));
+function decayRate(config: SpringConfig): number {
+  const { omega, zeta } = oscillator(config);
   return zeta <= 1 ? zeta * omega : omega * (zeta - Math.sqrt(zeta * zeta - 1));
 }
 

@@ -1212,23 +1212,22 @@ function ChartFrame({
     const { plan, spring } = session;
     const now = Date.now();
     const position = springAt(spring, now).position;
-    const due: number[] = [];
+    const mount = (index: number) => {
+      attachShifts(session.steps[index], plan.steps[index]);
+      setShown(current => (current.includes(index) ? current : [...current, index]));
+    };
     plan.steps.forEach((step, index) => {
       const level = springPosition(step.mountAt / plan.duration);
       const delay = step.mountAt <= 0 || position >= level ? 0 : (timeToReach(spring, level) ?? 0) - (now - spring.time);
       if (delay <= 0) {
-        attachShifts(session.steps[index], step);
-        due.push(index);
+        mount(index);
         return;
       }
       const timer = setTimeout(() => {
-        if (sessionRef.current !== session) return;
-        attachShifts(session.steps[index], step);
-        setShown(current => (current.includes(index) ? current : [...current, index]));
+        if (sessionRef.current === session) mount(index);
       }, delay);
       session.timers.push(timer);
     });
-    setShown(current => [...current, ...due.filter(index => !current.includes(index))]);
   }, []);
 
   const runTravel = useCallback(

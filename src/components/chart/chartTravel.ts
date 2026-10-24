@@ -179,10 +179,12 @@ export function travelSpring(durationMs: number): SpringConfig {
   return criticalSpring((OMEGA_TAU * 1000) / durationMs);
 }
 
+/** A one-second travel from rest. Any duration is this curve in normalized time. */
+const FROM_REST: Spring = { config: travelSpring(1000), target: 1, position: 0, velocity: 0, time: 0 };
+
 /** The travel spring's progress from rest at `u` = elapsed / duration. The planner and the motion share this curve. */
 export function springPosition(u: number): number {
-  const fromRest: Spring = { config: travelSpring(1000), target: 1, position: 0, velocity: 0, time: 0 };
-  return springAt(fromRest, u * 1000).position;
+  return springAt(FROM_REST, u * 1000).position;
 }
 
 export function progressAtQ(q: number): number {
