@@ -41,6 +41,12 @@ const BAR_REFERENCE_LEVELS = 20;
 const BAR_REFERENCE_MULTIPLIER = 2;
 /** The spread axis between the sides: symbol left, spread right. */
 const AXIS_HEIGHT = 28;
+/**
+ * A phone shows about 10 rows a side, and every depth update re-renders each mounted row. So mount
+ * a screenful first and keep half a screen ahead each way; deeper levels mount as the side scrolls.
+ */
+const FIRST_ROWS = 12;
+const WINDOW_SCREENS = 2;
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
 
@@ -122,6 +128,15 @@ function getItemLayout(_: ArrayLike<Level> | null | undefined, index: number) {
 function keyExtractor(level: Level): string {
   return String(level[0]);
 }
+
+const LIST_PROPS = {
+  keyExtractor,
+  getItemLayout,
+  initialNumToRender: FIRST_ROWS,
+  maxToRenderPerBatch: FIRST_ROWS,
+  windowSize: WINDOW_SCREENS,
+  showsVerticalScrollIndicator: false,
+} as const;
 
 export function OrderBookView({
   symbol,
@@ -242,12 +257,7 @@ export function OrderBookView({
         data={asks}
         inverted
         renderItem={renderAsk}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        initialNumToRender={16}
-        maxToRenderPerBatch={16}
-        windowSize={7}
-        showsVerticalScrollIndicator={false}
+        {...LIST_PROPS}
       />
 
       {axis}
@@ -257,12 +267,7 @@ export function OrderBookView({
         style={styles.list}
         data={bids}
         renderItem={renderBid}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        initialNumToRender={16}
-        maxToRenderPerBatch={16}
-        windowSize={7}
-        showsVerticalScrollIndicator={false}
+        {...LIST_PROPS}
       />
     </View>
   );

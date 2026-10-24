@@ -9,6 +9,7 @@ import {
 import { Heading, Skeleton, Text, useTheme } from '@reactive/silk-native';
 import { useRouter } from 'expo-router';
 import {
+  Activity,
   startTransition,
   Suspense,
   useCallback,
@@ -534,7 +535,12 @@ export default function SymbolScreen({ symbol }: { symbol: string }): JSX.Elemen
                   key={shown}
                   fallbackComponent={() => <LoadError what={list.what(symbol)} onRetry={retryLoad} />}
                 >
-                  <list.Body symbol={symbol} />
+                  {/* The search sheet covers the screen; hidden, the list keeps its state but drops
+                      its stream and renders, and resyncs when the sheet closes. Not the chart:
+                      its effects' cleanup ends a transition in flight for good. */}
+                  <Activity mode={searching ? 'hidden' : 'visible'}>
+                    <list.Body symbol={symbol} />
+                  </Activity>
                 </ErrorBoundary>
               }
             </Suspense>

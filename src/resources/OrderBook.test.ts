@@ -1,7 +1,7 @@
 import { useSuspense } from '@data-client/react';
 import { renderDataHook } from '@data-client/test';
 
-import { getOrderBook, OrderBook } from './OrderBook';
+import { BOOK_DEPTH, getOrderBook, OrderBook } from './OrderBook';
 import { actWrite } from './testSupport';
 
 function mount(response: object) {
@@ -89,4 +89,75 @@ it('merges a depth diff and ignores stale or gapped updates', async () => {
   expect(result.current.lastUpdateId).toBe(20);
   expect(result.current.bids).toEqual([[90, 1]]);
   expect(result.current.asks).toEqual([[91, 1]]);
+});
+
+function levels(from: number, step: number, count: number, qty = '1') {
+  return Array.from({ length: count }, (_, i) => [String(from + i * step), qty]);
+}
+
+it('keeps the levels nearest the spread and reuses unchanged ones', async () => {
+  const { result, controller } = mount({
+    lastUpdateId: 10,
+    bids: levels(1000, -1, 100),
+    asks: levels(1001, 1, 100),
+  });
+  const before = result.current.bids;
+
+  // Diffs past the snapshot fill the side out to BOOK_DEPTH; deeper ones are dropped.
+  await setBook(controller, {
+    U: 11,
+    u: 11,
+    b: [['1000.5', '2'], ...levels(900, -1, BOOK_DEPTH)],
+    a: [],
+  });
+
+  const { bids, asks } = result.current;
+  expect(bids).toHaveLength(BOOK_DEPTH);
+  expect(bids[0]).toEqual([1000.5, 2]);
+  expect(bids[1]).toBe(before[0]);
+  expect(bids[BOOK_DEPTH - 1][0]).toBe(1000 - (BOOK_DEPTH - 2));
+  expect(asks).toHaveLength(100);
+});
+
+it('keeps live levels past the snapshot when nearer ones are removed', async () => {
+  const { result, controller } = mount({
+    lastUpdateId: 10,
+    bids: levels(1000, -1, 100),
+    asks: [['1001', '1']],
+  });
+
+  await setBook(controller, { U: 11, u: 11, b: [['1001', '1']], a: [] });
+  await setBook(controller, {
+    U: 12,
+    u: 12,
+    b: levels(1001, -1, 100, '0'),
+    a: [],
+  });
+
+  expect(result.current.bids).toEqual([[901, 1]]);
+});
+
+it('keeps the same side when a full one only gets levels past its deepest', async () => {
+  const { result, controller } = mount({ lastUpdateId: 10, bids: [], asks: levels(1001, 1, 100) });
+  await setBook(controller, { U: 11, u: 11, b: levels(1000, -1, BOOK_DEPTH), a: [] });
+  const full = result.current.bids;
+
+  await setBook(controller, { U: 12, u: 12, b: [['0.5', '5']], a: [['5000', '0']] });
+
+  expect(result.current.lastUpdateId).toBe(12);
+  expect(result.current.bids).toBe(full);
+});
+
+it('takes a deeper level from the same diff that empties a full side', async () => {
+  const { result, controller } = mount({ lastUpdateId: 10, bids: [], asks: levels(1001, 1, 100) });
+  await setBook(controller, { U: 11, u: 11, b: levels(1000, -1, BOOK_DEPTH), a: [] });
+
+  await setBook(controller, {
+    U: 12,
+    u: 12,
+    b: [...levels(1000, -1, BOOK_DEPTH, '0'), ['0.5', '7']],
+    a: [],
+  });
+
+  expect(result.current.bids).toEqual([[0.5, 7]]);
 });
