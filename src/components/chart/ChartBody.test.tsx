@@ -368,8 +368,10 @@ it('fades to a delayed 1h list without the first-load sentence', async () => {
 
   await advance(399);
   expect(present('chart-caption')).toBe(false);
+  expect(present('chart-skeleton')).toBe(false);
   await advance(1);
   expect(textOf('chart-caption')).toBe('Loading 1h candles');
+  expect(present('chart-skeleton')).toBe(true);
   expect(present('candle-series-1h')).toBe(false);
   keepSize();
 
@@ -377,6 +379,7 @@ it('fades to a delayed 1h list without the first-load sentence', async () => {
   expect(present('candle-series-1h')).toBe(true);
   expect(textOf('candle-close')).toBe('222');
   expect(present('chart-caption')).toBe(false);
+  expect(present('chart-skeleton')).toBe(false);
   expect(present('chart-loading')).toBe(false);
   keepSize();
 });
@@ -497,6 +500,25 @@ it('keeps the frozen outgoing close when a kline arrives mid-fade', async () => 
   expect(textOf('candle-close')).toBe('111');
   expect(present('candle-last')).toBe(true);
   expect(present('candle-series-15m')).toBe(true);
+});
+
+it('draws ghost candles in the plot on first load', async () => {
+  mount({
+    interval: '15m',
+    seeds: [],
+    delay: () => 1000,
+    resolve: params => [row(period(Date.now(), params.interval), 111)],
+  });
+  await flush();
+  expect(textOf('chart-loading')).toBe('Loading BTCUSDT');
+  expect(present('chart-skeleton')).toBe(true);
+  expect(present('interval-15m')).toBe(true);
+
+  await advance(1000);
+  await settle();
+  expect(present('chart-skeleton')).toBe(false);
+  expect(present('chart-loading')).toBe(false);
+  expect(textOf('candle-close')).toBe('111');
 });
 
 it('keeps a chart-local failure inside the frame and retries only the chart', async () => {

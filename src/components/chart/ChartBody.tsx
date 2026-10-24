@@ -15,7 +15,6 @@ import {
   type Ref,
 } from 'react';
 import {
-  AccessibilityInfo,
   Animated,
   PixelRatio,
   Platform,
@@ -52,7 +51,9 @@ import {
   type TravelCandle,
   type TravelPlan,
 } from '@/components/chart/chartTravel';
+import { ChartSkeleton, ReadoutSkeleton, SkeletonCaption } from '@/components/chart/ChartSkeleton';
 import { MotionView } from '@/components/chart/MotionView';
+import { useReduceMotion } from '@/components/common/useReduceMotion';
 import { LoadError } from '@/components/common/LoadError';
 import { Pill } from '@/components/common/Pill';
 import {
@@ -254,22 +255,6 @@ function clearStaging(session: Session | null) {
 }
 
 type CandleMeta = { error?: unknown; expiresAt: number } | undefined;
-
-function useReduceMotion(): boolean {
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    let live = true;
-    AccessibilityInfo.isReduceMotionEnabled().then(value => {
-      if (live) setEnabled(value);
-    });
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setEnabled);
-    return () => {
-      live = false;
-      sub.remove();
-    };
-  }, []);
-  return enabled;
-}
 
 function snapshotCandles(candles: readonly Candle[]): Candle[] {
   return candles.map(candle => Object.assign(new Candle(), candle));
@@ -1624,6 +1609,8 @@ function ChartFrame({
   const hidden = phase.kind === 'out';
   const showValues = published != null && published.candles.length > 0 && published.interval === mounted;
   const showEmpty = published != null && published.candles.length === 0 && published.interval === mounted;
+  // The caption's delay keeps a quick load from flashing the skeleton.
+  const waiting = caption && phase.kind === 'empty';
 
   return (
     <View style={styles.frame}>
@@ -1713,6 +1700,9 @@ function ChartFrame({
             />
           </Animated.View>
         : null}
+        {waiting ?
+          <ChartSkeleton width={width} height={height} appear />
+        : null}
         {caption ?
           <View pointerEvents="none" style={[styles.band, styles.bandTop, styles.captionBand]}>
             <Text
@@ -1736,6 +1726,8 @@ function ChartFrame({
             candle={scrubCandle ?? published.candles[published.candles.length - 1]}
             opacity={published.opacity}
           />
+        : waiting ?
+          <ReadoutSkeleton labels={LABELS} />
         : LABELS.map(label => (
             <View key={label} style={styles.readoutItem}>
               <Text role="caption" tone="secondary" numberOfLines={1}>
@@ -1765,6 +1757,50 @@ function ChartFrame({
           />
         </View>
       : null}
+    </View>
+  );
+}
+
+/** The plot and readout before a list exists: ghost candles, so the first load shows the chart's shape at once. */
+function ChartPlaceholder({
+  symbol,
+  width,
+  height,
+}: {
+  symbol: string;
+  width: number;
+  height: number;
+}): JSX.Element {
+  return (
+    <>
+      <View style={[styles.plot, { width, height }]}>
+        <ChartSkeleton width={width} height={height} />
+        <SkeletonCaption testID="chart-loading">{`Loading ${symbol}`}</SkeletonCaption>
+      </View>
+      <View style={styles.readout}>
+        <ReadoutSkeleton labels={LABELS} />
+      </View>
+    </>
+  );
+}
+
+/** The chart segment before its screen can subscribe. Same layout as the chart, with nothing to select yet. */
+export function ChartLoading({
+  symbol,
+  interval,
+  onInterval,
+}: {
+  symbol: string;
+  interval: CandleInterval;
+  onInterval: (interval: CandleInterval) => void;
+}): JSX.Element {
+  const { width, height } = useWindowDimensions();
+  const insets = useScreenInsets();
+  const plot = plotSize(width, height, insets.top, insets.bottom);
+  return (
+    <View style={styles.body}>
+      <IntervalChips value={interval} onSelect={onInterval} />
+      <ChartPlaceholder symbol={symbol} width={plot.width} height={plot.height} />
     </View>
   );
 }
@@ -1843,11 +1879,7 @@ function ChartBody({
           <IntervalChips value={interval} onSelect={onInterval} />
           <AsyncBoundary
             key={retry}
-            fallback={
-              <Text tone="secondary" testID="chart-loading" style={styles.message}>
-                Loading {symbol}
-              </Text>
-            }
+            fallback={<ChartPlaceholder symbol={symbol} width={plot.width} height={plot.height} />}
             errorComponent={() => <LoadError what={`${symbol} candles`} onRetry={onRetry} />}
           >
             <Gate symbol={symbol} interval={openedAt} onOpen={openGate} />
