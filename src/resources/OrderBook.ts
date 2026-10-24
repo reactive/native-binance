@@ -129,26 +129,33 @@ export class OrderBook extends Entity {
   }
 }
 
+/**
+ * Applies a diff and keeps the `BOOK_LIMIT` levels nearest the spread. The diff stream covers the
+ * whole book, but the snapshot only knows that many levels, so deeper ones would only pile up.
+ * Unchanged levels keep their tuples.
+ */
 function mergeLevels(
   levels: readonly Level[],
   updates: readonly Level[],
   descending: boolean,
 ): Level[] {
   if (!updates.length) return levels as Level[];
-  const qtyAt = new Map<number, number>();
-  for (const [price, qty] of levels) qtyAt.set(price, qty);
+  const byPrice = new Map<number, Level>();
+  for (const level of levels) byPrice.set(level[0], level);
   let changed = false;
-  for (const [price, qty] of updates) {
+  for (const update of updates) {
+    const [price, qty] = update;
     if (qty === 0) {
-      if (qtyAt.delete(price)) changed = true;
-    } else if (qtyAt.get(price) !== qty) {
-      qtyAt.set(price, qty);
+      if (byPrice.delete(price)) changed = true;
+    } else if (byPrice.get(price)?.[1] !== qty) {
+      byPrice.set(price, update);
       changed = true;
     }
   }
   if (!changed) return levels as Level[];
-  const next: Level[] = Array.from(qtyAt, ([price, qty]) => [price, qty]);
+  const next = Array.from(byPrice.values());
   next.sort((a, b) => (descending ? b[0] - a[0] : a[0] - b[0]));
+  if (next.length > BOOK_LIMIT) next.length = BOOK_LIMIT;
   return next;
 }
 

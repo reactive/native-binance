@@ -1,12 +1,6 @@
 import { Text, useTheme } from '@reactive/silk-native';
-import { memo, useCallback, useMemo, type JSX } from 'react';
-import {
-  FlatList,
-  StyleSheet,
-  View,
-  type ListRenderItem,
-  type TextStyle,
-} from 'react-native';
+import { memo, useCallback, useMemo, useState, type JSX } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent, type TextStyle } from 'react-native';
 
 import { formatPrice, formatSize } from '@/components/common/formatMarket';
 import { ListSkeleton } from '@/components/common/ListSkeleton';
@@ -27,7 +21,7 @@ export type OrderBookViewProps = {
   sizePlaces?: number;
 };
 
-/** Fixed row height so FlatList can use getItemLayout; bodySm (14px) text sits centered. */
+/** Fixed row height, so a side's height says how many levels it shows; bodySm (14px) text sits centered. */
 const BOOK_ROW_HEIGHT = 32;
 const ROW_GUTTER = 12; // theme.semantic.space[3]
 const BAR_INSET = 3;
@@ -41,6 +35,8 @@ const BAR_REFERENCE_LEVELS = 20;
 const BAR_REFERENCE_MULTIPLIER = 2;
 /** The spread axis between the sides: symbol left, spread right. */
 const AXIS_HEIGHT = 28;
+/** Rows per side before the first layout: a phone-sized side, so the first frame is not empty. */
+const INITIAL_ROWS = 12;
 
 const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
 
@@ -115,12 +111,41 @@ const LevelRow = memo(function LevelRow({
   );
 });
 
-function getItemLayout(_: ArrayLike<Level> | null | undefined, index: number) {
-  return { length: BOOK_ROW_HEIGHT, offset: BOOK_ROW_HEIGHT * index, index };
-}
+type SideProps = {
+  readonly side: Side;
+  /** Best first. */
+  readonly levels: readonly Level[];
+  readonly rows: number;
+  readonly barReference: number;
+  readonly places: Places;
+  readonly palette: RowPalette;
+};
 
-function keyExtractor(level: Level): string {
-  return String(level[0]);
+/** The levels nearest the spread that fit; asks stack upward from the axis, bids downward. */
+function BookSide({ side, levels, rows, barReference, places, palette }: SideProps): JSX.Element {
+  const count = Math.min(rows, levels.length);
+  const children: JSX.Element[] = [];
+  for (let i = 0; i < count; i++) {
+    const [price, qty] = levels[i];
+    children.push(
+      <LevelRow
+        key={price}
+        side={side}
+        price={price}
+        qty={qty}
+        ratio={Math.min(1, qty / barReference)}
+        places={places}
+        palette={palette}
+        testID={i === 0 ? `best-${side}` : undefined}
+      />,
+    );
+  }
+  const isAsk = side === 'ask';
+  return (
+    <View testID={isAsk ? 'asks' : 'bids'} style={[styles.list, isAsk ? styles.asks : null]}>
+      {children}
+    </View>
+  );
 }
 
 export function OrderBookView({
@@ -167,35 +192,12 @@ export function OrderBookView({
     return mean > 0 ? mean * BAR_REFERENCE_MULTIPLIER : 1;
   }, [asks, bids]);
 
-  const renderAsk = useCallback<ListRenderItem<Level>>(
-    ({ item, index }) => (
-      <LevelRow
-        side="ask"
-        price={item[0]}
-        qty={item[1]}
-        ratio={Math.min(1, item[1] / barReference)}
-        places={places}
-        palette={palette}
-        testID={index === 0 ? 'best-ask' : undefined}
-      />
-    ),
-    [barReference, places, palette],
-  );
-
-  const renderBid = useCallback<ListRenderItem<Level>>(
-    ({ item, index }) => (
-      <LevelRow
-        side="bid"
-        price={item[0]}
-        qty={item[1]}
-        ratio={Math.min(1, item[1] / barReference)}
-        places={places}
-        palette={palette}
-        testID={index === 0 ? 'best-bid' : undefined}
-      />
-    ),
-    [barReference, places, palette],
-  );
+  // Both sides share the height left by the axis. A partial row still shows, clipped at the edge.
+  const [rows, setRows] = useState(INITIAL_ROWS);
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const side = (event.nativeEvent.layout.height - AXIS_HEIGHT) / 2;
+    setRows(Math.max(0, Math.ceil(side / BOOK_ROW_HEIGHT)));
+  }, []);
 
   const hasAsks = asks.length > 0;
   const hasBids = bids.length > 0;
@@ -224,46 +226,16 @@ export function OrderBookView({
     </View>
   );
 
-  if (!hasAsks && !hasBids) {
-    return (
-      <View style={[styles.root, { backgroundColor: color.surface }]} testID="book-depth">
-        <View style={styles.list} />
-        {axis}
-        <View style={styles.list} />
-      </View>
-    );
-  }
-
+  const sideProps = { rows, barReference, places, palette };
   return (
-    <View style={[styles.root, { backgroundColor: color.surface }]} testID="book-depth">
-      <FlatList
-        testID="asks"
-        style={styles.list}
-        data={asks}
-        inverted
-        renderItem={renderAsk}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        initialNumToRender={16}
-        maxToRenderPerBatch={16}
-        windowSize={7}
-        showsVerticalScrollIndicator={false}
-      />
-
+    <View
+      style={[styles.root, { backgroundColor: color.surface }]}
+      testID="book-depth"
+      onLayout={onLayout}
+    >
+      <BookSide side="ask" levels={asks} {...sideProps} />
       {axis}
-
-      <FlatList
-        testID="bids"
-        style={styles.list}
-        data={bids}
-        renderItem={renderBid}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        initialNumToRender={16}
-        maxToRenderPerBatch={16}
-        windowSize={7}
-        showsVerticalScrollIndicator={false}
-      />
+      <BookSide side="bid" levels={bids} {...sideProps} />
     </View>
   );
 }
@@ -276,6 +248,10 @@ const styles = StyleSheet.create({
   list: {
     flex: 1,
     minHeight: 0,
+    overflow: 'hidden',
+  },
+  asks: {
+    flexDirection: 'column-reverse',
   },
   row: {
     height: BOOK_ROW_HEIGHT,

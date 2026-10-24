@@ -90,3 +90,32 @@ it('merges a depth diff and ignores stale or gapped updates', async () => {
   expect(result.current.bids).toEqual([[90, 1]]);
   expect(result.current.asks).toEqual([[91, 1]]);
 });
+
+it('keeps the levels nearest the spread and reuses unchanged ones', async () => {
+  const levels = (from: number, step: number) =>
+    Array.from({ length: 100 }, (_, i) => [String(from + i * step), '1']);
+  const { result, controller } = mount({
+    lastUpdateId: 10,
+    bids: levels(1000, -1),
+    asks: levels(1001, 1),
+  });
+  const before = result.current.bids;
+
+  await setBook(controller, {
+    U: 11,
+    u: 11,
+    b: [
+      ['1000.5', '2'],
+      ['500', '3'],
+    ],
+    a: [['5000', '3']],
+  });
+
+  const { bids, asks } = result.current;
+  expect(bids).toHaveLength(100);
+  expect(bids[0]).toEqual([1000.5, 2]);
+  expect(bids[1]).toBe(before[0]);
+  expect(bids[99][0]).toBe(902);
+  expect(asks).toHaveLength(100);
+  expect(asks[99][0]).toBe(1100);
+});
