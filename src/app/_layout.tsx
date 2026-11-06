@@ -59,9 +59,11 @@ function ThemedStack(): JSX.Element {
         },
       }}
     >
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.surface } }}>
-        <Stack.Screen name="index" activityEnabled={1} />
-      </Stack>
+      {/* Hide every screen with one screen above it, so effects (and data subscriptions) stop while it is covered. */}
+      <Stack
+        activityEnabled={1}
+        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.surface } }}
+      />
     </ThemeProvider>
   );
 }
