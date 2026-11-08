@@ -45,6 +45,7 @@ function harness() {
   };
   const installed = installFakeSocket();
   const stream = new TradeStream();
+  stream.init();
   const handle = stream.middleware(controller as unknown as Controller)(async action => {
     if (action.type === actionTypes.SET_RESPONSE) listed = true;
   });
@@ -203,5 +204,18 @@ it('closes only the symbol that was unsubscribed', async () => {
     const eth = sockets.find(socket => socket.url === ETH_URL);
     expect(btc?.closed).toBe(true);
     expect(eth?.closed).toBe(false);
+  });
+});
+
+it('closes on pause and reopens with a tape snapshot on resume', async () => {
+  await withTrade(async ({ sockets, dispatch, fetch, stream }) => {
+    await dispatch(subscribe('BTCUSDT'));
+    stream.init();
+    stream.cleanup();
+    expect(sockets[0].closed).toBe(true);
+    stream.init();
+    expect(sockets.map(socket => socket.url)).toEqual([BTC_URL, BTC_URL]);
+    sockets[1].onopen?.();
+    expect(fetch).toHaveBeenCalledWith(getTrades, { symbol: 'BTCUSDT' });
   });
 });

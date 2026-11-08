@@ -91,7 +91,7 @@ it('keeps the ticker socket subscribed when the first ticker read fails', async 
     },
     {
       wrapper: ({ children }: { children: ReactNode }) => (
-        <DataProvider managers={[spy, network]}>
+        <DataProvider managers={() => [spy, network]}>
           <MockResolver
             fixtures={[
               {

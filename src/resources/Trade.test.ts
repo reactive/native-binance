@@ -152,6 +152,7 @@ it('keeps a print merged before the refetch after the snapshot returns', async (
     { initialFixtures: [snapshot('BTCUSDT', [agg(10, '10'), agg(11, '11')])] },
   );
   const stream = new TradeStream();
+  stream.init();
   const handle = stream.middleware(controller)(async action => {
     if (action.type !== actionTypes.SET_RESPONSE || action.endpoint !== getTrades) return;
     await controller.resolve(getTrades, {
@@ -198,6 +199,10 @@ it('keeps a print merged before the refetch after the snapshot returns', async (
     });
 
     expect(result.current.map(trade => trade.a)).toEqual([12, 11, 10]);
+
+    // A stream print stamped before that snapshot still lands.
+    await setTrades(controller, 'BTCUSDT', agg(13, '13'));
+    expect(result.current.map(trade => trade.a)).toEqual([13, 12, 11, 10]);
   } finally {
     stream.cleanup();
     installed.restore();

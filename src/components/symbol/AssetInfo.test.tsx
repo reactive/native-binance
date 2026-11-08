@@ -193,7 +193,7 @@ function mount(symbol: string, fixtures: Fixture[], managers?: Manager[]) {
     tree = TestRenderer.create(
       <DataProvider
         initialState={mockInitialState(fixtures)}
-        {...(managers ? { managers } : {})}
+        {...(managers ? { managers: () => managers } : {})}
       >
         <SilkProvider>
           <AsyncBoundary fallback={null}>
@@ -217,7 +217,7 @@ async function mountLive(
     tree = TestRenderer.create(
       <DataProvider
         {...(initialState ? { initialState } : {})}
-        {...(managers ? { managers } : {})}
+        {...(managers ? { managers: () => managers } : {})}
       >
         <MockResolver fixtures={fixtures}>
           <SilkProvider>

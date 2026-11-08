@@ -62,6 +62,8 @@ export default class OrderBookStream implements Manager {
   private readonly resyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Last id applied. `getState()` lags the reducer, so the gap check cannot re-read the book. */
   private readonly heads = new Map<string, number>();
+  /** Sockets open only between `init()` and `cleanup()`. Subscriptions are counted at any time. */
+  private active = false;
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -107,14 +109,24 @@ export default class OrderBookStream implements Manager {
     };
   };
 
+  /**
+   * Starts or resumes: opens a socket for each subscription counted so far.
+   * `heads` survive a pause, so the first diff after it is a gap and resyncs the book.
+   */
+  init() {
+    if (this.active) return;
+    this.active = true;
+    for (const symbol of this.counts.keys()) this.open(symbol);
+  }
+
+  /** Pauses. Subscribers stay counted, so `init()` reconnects them. */
   cleanup() {
+    this.active = false;
     for (const timer of this.resyncTimers.values()) clearTimeout(timer);
     this.resyncTimers.clear();
     for (const socket of this.sockets.values()) socket.close();
     this.sockets.clear();
-    this.counts.clear();
     this.buffers.clear();
-    this.heads.clear();
     this.resyncing.clear();
     this.resyncFailures.clear();
   }
@@ -122,7 +134,11 @@ export default class OrderBookStream implements Manager {
   private subscribe(symbol: string) {
     const count = (this.counts.get(symbol) ?? 0) + 1;
     this.counts.set(symbol, count);
-    if (count > 1) return;
+    if (count > 1 || !this.active) return;
+    this.open(symbol);
+  }
+
+  private open(symbol: string) {
     this.buffers.set(symbol, []);
     this.connect(symbol);
   }

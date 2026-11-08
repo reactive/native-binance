@@ -80,6 +80,8 @@ async function mount(snapshotId = 100) {
   );
 
   const stream = new OrderBookStream();
+
+  stream.init();
   const handle = stream.middleware(controller)(async () => {});
   const set = controller.set.bind(controller);
   controller.set = ((...args: Parameters<Controller['set']>) =>
@@ -310,6 +312,29 @@ it('clears a resync backoff when the book unsubscribes', async () => {
     expect(fetches()).toBe(1);
   } finally {
     jest.useRealTimers();
+    stream.cleanup();
+  }
+});
+
+it('closes on pause and resyncs the first diff after resume', async () => {
+  const { result, frame, stream, fetches, releaseSnapshot, socket, sockets } = await mount(100);
+  try {
+    stream.init();
+    await frame(diff(101, 105, [['100', '2']]));
+    expect(result.current.lastUpdateId).toBe(105);
+
+    stream.cleanup();
+    expect(socket()?.closed).toBe(true);
+    stream.init();
+    expect(sockets()).toBe(2);
+    expect(socket()?.url).toBe(URL);
+
+    await frame(diff(200, 205, [['90', '1']]));
+    expect(fetches()).toBe(1);
+    releaseSnapshot({ lastUpdateId: 210, bids: [['110', '2']], asks: [['111', '2']] });
+    await turn(2);
+    expect(result.current.lastUpdateId).toBe(210);
+  } finally {
     stream.cleanup();
   }
 });

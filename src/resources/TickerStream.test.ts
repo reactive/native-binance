@@ -48,6 +48,7 @@ it('writes symbols from a batch that arrived while the previous write was in fli
   };
   const installed = installFakeSocket();
   const stream = new TickerStream();
+  stream.init();
   try {
     const next = stream.middleware(controller as unknown as Controller);
     await next(() => Promise.resolve())({
@@ -76,6 +77,7 @@ it('writes symbols from a batch that arrived while the previous write was in fli
 it('keeps a symbol the socket message left out', async () => {
   const installed = installFakeSocket();
   const stream = new TickerStream();
+  stream.init();
   const { result, controller } = renderDataHook(() => ({
     btc: useQuery(Ticker, { symbol: 'BTCUSDT' }),
     eth: useQuery(Ticker, { symbol: 'ETHUSDT' }),
@@ -131,6 +133,7 @@ describe('reopen', () => {
   it('fetches tickers only when a socket opens after a failure', async () => {
     const fetch = jest.fn(() => Promise.reject(new Error('offline')));
     const stream = new TickerStream();
+    stream.init();
     try {
       const handle = stream.middleware({ fetch } as unknown as Controller);
       await handle(() => Promise.resolve())({
@@ -150,8 +153,32 @@ describe('reopen', () => {
     }
   });
 
+  it('closes on pause and reopens with a refetch on resume', async () => {
+    const fetch = jest.fn(() => Promise.resolve());
+    const stream = new TickerStream();
+    stream.init();
+    try {
+      const handle = stream.middleware({ fetch } as unknown as Controller);
+      await handle(() => Promise.resolve())({
+        type: actionTypes.SUBSCRIBE,
+        endpoint: getTickers,
+      } as never);
+      stream.init();
+      expect(FakeSocket.instances).toHaveLength(1);
+      stream.cleanup();
+      expect(FakeSocket.instances[0].closed).toBe(true);
+      stream.init();
+      expect(FakeSocket.instances).toHaveLength(2);
+      FakeSocket.instances[1].open();
+      expect(fetch).toHaveBeenCalledWith(getTickers);
+    } finally {
+      stream.cleanup();
+    }
+  });
+
   it('opens nothing when the subscriber leaves during the reconnect wait', async () => {
     const stream = new TickerStream();
+    stream.init();
     try {
       const handle = stream.middleware({ fetch: jest.fn() } as unknown as Controller);
       await handle(() => Promise.resolve())({

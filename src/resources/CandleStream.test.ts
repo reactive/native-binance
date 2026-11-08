@@ -53,6 +53,7 @@ afterEach(() => {
 
 function createStream() {
   const stream = new CandleStream();
+  stream.init();
   streams.push(stream);
   return stream;
 }
@@ -137,4 +138,38 @@ it('catches a rejected kline refetch', async () => {
   FakeSocket.instances[1].open();
   await Promise.resolve();
   expect(ctrl.fetch).toHaveBeenCalledTimes(1);
+});
+
+it('closes on pause and reopens with a refetch on resume', async () => {
+  const stream = createStream();
+  const ctrl = controller();
+  const args = { symbol: 'BTCUSDT', interval: '15m' };
+  await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, args);
+  stream.init();
+  expect(FakeSocket.instances).toHaveLength(1);
+
+  stream.cleanup();
+  expect(FakeSocket.instances[0].closed).toBe(true);
+  // A subscriber that arrives while paused waits for init().
+  await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, { symbol: 'ETHUSDT', interval: '1h' });
+  expect(FakeSocket.instances).toHaveLength(1);
+
+  stream.init();
+  expect(FakeSocket.instances.slice(1).map(socket => socket.url)).toEqual([
+    klineStream('BTCUSDT', '15m'),
+    klineStream('ETHUSDT', '1h'),
+  ]);
+  FakeSocket.instances[1].open();
+  expect(ctrl.fetch).toHaveBeenCalledWith(getCandles, args);
+});
+
+it('stays closed on resume when the subscriber left while paused', async () => {
+  const stream = createStream();
+  const ctrl = controller();
+  const args = { symbol: 'BTCUSDT', interval: '15m' };
+  await dispatch(stream, ctrl, actionTypes.SUBSCRIBE, args);
+  stream.cleanup();
+  await dispatch(stream, ctrl, actionTypes.UNSUBSCRIBE, args);
+  stream.init();
+  expect(FakeSocket.instances).toHaveLength(1);
 });

@@ -15,7 +15,7 @@ import OrderBookStream from '@/resources/OrderBookStream';
 import TickerStream from '@/resources/TickerStream';
 import TradeStream from '@/resources/TradeStream';
 
-const managers = [
+const managers = () => [
   new OrderBookStream(),
   new TickerStream(),
   new CandleStream(),

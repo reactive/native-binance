@@ -64,10 +64,8 @@ tape.mergeWithStore = (existingMeta, incomingMeta, existing, incoming) => {
 };
 
 /** Stream writes. `controller.set(newTrades, { symbol }, events)`. */
+// Since 0.19, `addWith` schemas always apply to the stored list, even when it is newer than this set.
 export const newTrades = tape.addWith(newestFirst);
-// `addWith` delegates `mergeWithStore` to `tape`. Sets must union even when their stamp is older.
-newTrades.mergeWithStore = (_existingMeta, _incomingMeta, existing, incoming) =>
-  newestFirst(idsOf(existing), idsOf(incoming));
 
 function idsOf(value: unknown): readonly string[] {
   return Array.isArray(value) ? value : [];
