@@ -263,7 +263,7 @@ function Harness({
     },
   ]);
   const [state] = useState(() => mockInitialState(seeds));
-  const [managers] = useState(() => {
+  const [managers] = useState(() => () => {
     const stream = new CandleStream();
     streams.push(stream);
     return [stream, ...getDefaultManagers()];
@@ -630,7 +630,7 @@ it('does not paint an expired list when Chart mounts again', async () => {
     const [show, set] = useState(true);
     setShow = set;
     const [state] = useState(() => mockInitialState([seed('15m', period(NOW, '15m'), 111)]));
-    const [managers] = useState(() => {
+    const [managers] = useState(() => () => {
       const stream = new CandleStream();
       streams.push(stream);
       return [stream, ...getDefaultManagers()];
