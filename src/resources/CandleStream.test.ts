@@ -53,6 +53,7 @@ afterEach(() => {
 
 function createStream() {
   const stream = new CandleStream();
+  stream.init();
   streams.push(stream);
   return stream;
 }

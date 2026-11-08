@@ -45,8 +45,10 @@ export default class TickerStream implements Manager {
   private readonly sockets = new Map<string, LiveSocket>();
   private pending = new Map<string, object>();
   private writing = false;
-  /** Between `cleanup()` and `init()` the store is paused: subscriptions are counted, sockets stay closed. */
-  private active = true;
+  /** Sockets open only between `init()` and `cleanup()`. Subscriptions are counted at any time. */
+  private active = false;
+  /** `init()` has run before, so the next one resumes and has missed frames to refetch. */
+  private started = false;
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -66,11 +68,13 @@ export default class TickerStream implements Manager {
     };
   };
 
-  /** Resumes after `cleanup()`. The first mount's `init()` finds the store already active. */
+  /** Starts or resumes: opens a socket for each subscription counted so far. */
   init() {
     if (this.active) return;
     this.active = true;
-    if (this.count > 0) this.connect(true);
+    const resumed = this.started;
+    this.started = true;
+    if (this.count > 0) this.connect(resumed);
   }
 
   /** Pauses. Subscribers stay counted, so `init()` reconnects them. */

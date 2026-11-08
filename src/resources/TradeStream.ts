@@ -61,8 +61,8 @@ export default class TradeStream implements Manager {
   private readonly scheduled = new Set<string>();
   /** The tape collection has been seen, so later frames skip `controller.get`. */
   private readonly ready = new Set<string>();
-  /** Between `cleanup()` and `init()` the store is paused: subscriptions are counted, sockets stay closed. */
-  private active = true;
+  /** Sockets open only between `init()` and `cleanup()`. Subscriptions are counted at any time. */
+  private active = false;
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -106,7 +106,7 @@ export default class TradeStream implements Manager {
     };
   };
 
-  /** Resumes after `cleanup()`. The first mount's `init()` finds the store already active. Each open refetches the tape. */
+  /** Starts or resumes: opens a socket for each subscription counted so far. Each open refetches the tape. */
   init() {
     if (this.active) return;
     this.active = true;

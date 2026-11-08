@@ -80,6 +80,8 @@ async function mount(snapshotId = 100) {
   );
 
   const stream = new OrderBookStream();
+
+  stream.init();
   const handle = stream.middleware(controller)(async () => {});
   const set = controller.set.bind(controller);
   controller.set = ((...args: Parameters<Controller['set']>) =>

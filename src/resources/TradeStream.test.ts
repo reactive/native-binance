@@ -45,6 +45,7 @@ function harness() {
   };
   const installed = installFakeSocket();
   const stream = new TradeStream();
+  stream.init();
   const handle = stream.middleware(controller as unknown as Controller)(async action => {
     if (action.type === actionTypes.SET_RESPONSE) listed = true;
   });

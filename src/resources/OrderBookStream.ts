@@ -62,8 +62,8 @@ export default class OrderBookStream implements Manager {
   private readonly resyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Last id applied. `getState()` lags the reducer, so the gap check cannot re-read the book. */
   private readonly heads = new Map<string, number>();
-  /** Between `cleanup()` and `init()` the store is paused: subscriptions are counted, sockets stay closed. */
-  private active = true;
+  /** Sockets open only between `init()` and `cleanup()`. Subscriptions are counted at any time. */
+  private active = false;
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -110,8 +110,8 @@ export default class OrderBookStream implements Manager {
   };
 
   /**
-   * Resumes after `cleanup()`. The first mount's `init()` finds the store already active.
-   * `heads` survive the pause, so the first diff after it is a gap and resyncs the book.
+   * Starts or resumes: opens a socket for each subscription counted so far.
+   * `heads` survive a pause, so the first diff after it is a gap and resyncs the book.
    */
   init() {
     if (this.active) return;

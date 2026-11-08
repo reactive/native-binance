@@ -46,8 +46,10 @@ export default class CandleStream implements Manager {
   protected controller: Controller = new Controller();
   private readonly counts = new Map<string, number>();
   private readonly sockets = new Map<string, LiveSocket>();
-  /** Between `cleanup()` and `init()` the store is paused: subscriptions are counted, sockets stay closed. */
-  private active = true;
+  /** Sockets open only between `init()` and `cleanup()`. Subscriptions are counted at any time. */
+  private active = false;
+  /** `init()` has run before, so the next one resumes and has missed frames to refetch. */
+  private started = false;
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -70,13 +72,15 @@ export default class CandleStream implements Manager {
     };
   };
 
-  /** Resumes after `cleanup()`. The first mount's `init()` finds the store already active. */
+  /** Starts or resumes: opens a socket for each subscription counted so far. */
   init() {
     if (this.active) return;
     this.active = true;
+    const resumed = this.started;
+    this.started = true;
     for (const key of this.counts.keys()) {
       const at = key.indexOf('@');
-      this.connect(key.slice(0, at), key.slice(at + 1) as CandleInterval, true);
+      this.connect(key.slice(0, at), key.slice(at + 1) as CandleInterval, resumed);
     }
   }
 
