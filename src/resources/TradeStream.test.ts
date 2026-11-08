@@ -205,3 +205,16 @@ it('closes only the symbol that was unsubscribed', async () => {
     expect(eth?.closed).toBe(false);
   });
 });
+
+it('closes on pause and reopens with a tape snapshot on resume', async () => {
+  await withTrade(async ({ sockets, dispatch, fetch, stream }) => {
+    await dispatch(subscribe('BTCUSDT'));
+    stream.init();
+    stream.cleanup();
+    expect(sockets[0].closed).toBe(true);
+    stream.init();
+    expect(sockets.map(socket => socket.url)).toEqual([BTC_URL, BTC_URL]);
+    sockets[1].onopen?.();
+    expect(fetch).toHaveBeenCalledWith(getTrades, { symbol: 'BTCUSDT' });
+  });
+});

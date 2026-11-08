@@ -150,6 +150,28 @@ describe('reopen', () => {
     }
   });
 
+  it('closes on pause and reopens with a refetch on resume', async () => {
+    const fetch = jest.fn(() => Promise.resolve());
+    const stream = new TickerStream();
+    try {
+      const handle = stream.middleware({ fetch } as unknown as Controller);
+      await handle(() => Promise.resolve())({
+        type: actionTypes.SUBSCRIBE,
+        endpoint: getTickers,
+      } as never);
+      stream.init();
+      expect(FakeSocket.instances).toHaveLength(1);
+      stream.cleanup();
+      expect(FakeSocket.instances[0].closed).toBe(true);
+      stream.init();
+      expect(FakeSocket.instances).toHaveLength(2);
+      FakeSocket.instances[1].open();
+      expect(fetch).toHaveBeenCalledWith(getTickers);
+    } finally {
+      stream.cleanup();
+    }
+  });
+
   it('opens nothing when the subscriber leaves during the reconnect wait', async () => {
     const stream = new TickerStream();
     try {

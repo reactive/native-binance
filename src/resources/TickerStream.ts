@@ -45,6 +45,8 @@ export default class TickerStream implements Manager {
   private readonly sockets = new Map<string, LiveSocket>();
   private pending = new Map<string, object>();
   private writing = false;
+  /** Between `cleanup()` and `init()` the store is paused: subscriptions are counted, sockets stay closed. */
+  private active = true;
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -64,14 +66,22 @@ export default class TickerStream implements Manager {
     };
   };
 
+  /** Resumes after `cleanup()`. The first mount's `init()` finds the store already active. */
+  init() {
+    if (this.active) return;
+    this.active = true;
+    if (this.count > 0) this.connect(true);
+  }
+
+  /** Pauses. Subscribers stay counted, so `init()` reconnects them. */
   cleanup() {
-    this.count = 0;
+    this.active = false;
     this.disconnect();
   }
 
   private subscribe() {
     this.count += 1;
-    if (this.count > 1) return;
+    if (this.count > 1 || !this.active) return;
     this.connect();
   }
 
@@ -88,7 +98,8 @@ export default class TickerStream implements Manager {
     socket?.close();
   }
 
-  private connect() {
+  /** `resumed` refetches on open, since ticks were missed while paused. */
+  private connect(resumed = false) {
     const socket = new LiveSocket({
       url: TICKER_STREAM,
       status: this.status,
@@ -99,7 +110,7 @@ export default class TickerStream implements Manager {
         this.flush();
       },
       onOpen: reopened => {
-        if (!reopened) return;
+        if (!reopened && !resumed) return;
         // Quiet symbols are absent from `!miniTicker@arr`, so a recovered socket refetches them.
         void Promise.resolve(this.controller.fetch(getTickers)).catch(() => {});
       },

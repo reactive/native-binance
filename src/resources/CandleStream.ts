@@ -46,6 +46,8 @@ export default class CandleStream implements Manager {
   protected controller: Controller = new Controller();
   private readonly counts = new Map<string, number>();
   private readonly sockets = new Map<string, LiveSocket>();
+  /** Between `cleanup()` and `init()` the store is paused: subscriptions are counted, sockets stay closed. */
+  private active = true;
 
   constructor(private readonly status: StreamStatus = streamStatus) {}
 
@@ -68,17 +70,28 @@ export default class CandleStream implements Manager {
     };
   };
 
+  /** Resumes after `cleanup()`. The first mount's `init()` finds the store already active. */
+  init() {
+    if (this.active) return;
+    this.active = true;
+    for (const key of this.counts.keys()) {
+      const at = key.indexOf('@');
+      this.connect(key.slice(0, at), key.slice(at + 1) as CandleInterval, true);
+    }
+  }
+
+  /** Pauses. Subscribers stay counted, so `init()` reconnects them. */
   cleanup() {
+    this.active = false;
     for (const socket of this.sockets.values()) socket.close();
     this.sockets.clear();
-    this.counts.clear();
   }
 
   private subscribe(symbol: string, interval: CandleInterval) {
     const key = streamKey(symbol, interval);
     const count = (this.counts.get(key) ?? 0) + 1;
     this.counts.set(key, count);
-    if (count > 1) return;
+    if (count > 1 || !this.active) return;
     this.connect(symbol, interval);
   }
 
@@ -99,7 +112,8 @@ export default class CandleStream implements Manager {
     socket?.close();
   }
 
-  private connect(symbol: string, interval: CandleInterval) {
+  /** `resumed` refetches on open, since candles closed while paused. */
+  private connect(symbol: string, interval: CandleInterval, resumed = false) {
     const key = streamKey(symbol, interval);
     const socket = new LiveSocket({
       url: klineStream(symbol, interval),
@@ -110,7 +124,7 @@ export default class CandleStream implements Manager {
         void this.controller.set(upsertCandle, { symbol, interval }, [candle]);
       },
       onOpen: reopened => {
-        if (!reopened) return;
+        if (!reopened && !resumed) return;
         void Promise.resolve(this.controller.fetch(getCandles, { symbol, interval })).catch(
           () => {},
         );
