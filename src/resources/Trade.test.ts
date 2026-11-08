@@ -198,6 +198,10 @@ it('keeps a print merged before the refetch after the snapshot returns', async (
     });
 
     expect(result.current.map(trade => trade.a)).toEqual([12, 11, 10]);
+
+    // A stream print stamped before that snapshot still lands.
+    await setTrades(controller, 'BTCUSDT', agg(13, '13'));
+    expect(result.current.map(trade => trade.a)).toEqual([13, 12, 11, 10]);
   } finally {
     stream.cleanup();
     installed.restore();
