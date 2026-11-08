@@ -16,7 +16,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "@data-client/react": "0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8",
+    "@data-client/react": "0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda",
     "@data-client/rest": "0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8",
     "@reactive/silk-core": "file:./vendor/silk-core.tgz",
     "@reactive/silk-native": "file:./vendor/silk-native.tgz",
@@ -40,7 +40,7 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
-    "@data-client/test": "0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8",
+    "@data-client/test": "0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda",
     "@react-native/jest-preset": "0.88.1",
     "@testing-library/react-native": "^14.1.0",
     "@types/jest": "30.0.0",

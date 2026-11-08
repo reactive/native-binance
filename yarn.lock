@@ -1040,14 +1040,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@data-client/core@npm:^0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8":
-  version: 0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8
-  resolution: "@data-client/core@npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+"@data-client/core@npm:^0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda":
+  version: 0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda
+  resolution: "@data-client/core@npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
   dependencies:
     "@babel/runtime": "npm:^7.20.0 || ^8.0.0"
-    "@data-client/normalizr": "npm:^0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+    "@data-client/normalizr": "npm:^0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
     flux-standard-action: "npm:^2.1.1"
-  checksum: 10c0/b0cc6b5f8a1436a70a5467849c4aa7908ef97014842acdf24826cf8a67b47fc2e8934676f0618ad901dfd011ff9e9991746736a9fa995aa520f82a53d735f9a8
+  checksum: 10c0/dba11a07a4d604f20398bf3c6285e1cf25c61ba68842ec4e3714b112d692a1d26ce66d77ddccbdd63dbd34415434257023dfc2aebd0a1ddb22b742b54d9866df
   languageName: node
   linkType: hard
 
@@ -1062,22 +1062,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@data-client/normalizr@npm:^0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8":
-  version: 0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8
-  resolution: "@data-client/normalizr@npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+"@data-client/normalizr@npm:^0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda":
+  version: 0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda
+  resolution: "@data-client/normalizr@npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
   dependencies:
     "@babel/runtime": "npm:^7.20.0 || ^8.0.0"
-  checksum: 10c0/e51daf4fcbc9693f86746bd646a2cf06108be0179d4235c8429c476d8284deafbc14ce589c6956793ec68c08c3257f04eae053e54da8643dac9baf62f403fb89
+  checksum: 10c0/d07bfa5e196b4e33c0695649a5caae935ec4b50b5ccb001367927cf3928959591e9598660e3b09910779a9548dff534ce60581d805fedb990b92871017a0a24c
   languageName: node
   linkType: hard
 
-"@data-client/react@npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8":
-  version: 0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8
-  resolution: "@data-client/react@npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+"@data-client/react@npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda":
+  version: 0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda
+  resolution: "@data-client/react@npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
   dependencies:
     "@babel/runtime": "npm:^7.20.0 || ^8.0.0"
-    "@data-client/core": "npm:^0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
-    "@data-client/use-enhanced-reducer": "npm:^0.2.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+    "@data-client/core": "npm:^0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
+    "@data-client/use-enhanced-reducer": "npm:^0.2.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
   peerDependencies:
     "@react-navigation/native": ^6.0.0 || ^7.0.0
     "@types/react": ^16.14.0 || ^17.0.0 || ^18.0.0 || ^19.0.0-0 || ^19.0.0
@@ -1089,7 +1089,7 @@ __metadata:
       optional: true
   bin:
     data-client-skills: ./bin/data-client-skills.mjs
-  checksum: 10c0/c031c0d3fdb2c0028fd0b8da06b6f9667f3ded8602679f46d197bb8c79313f498680bdbb5685756a6cec40cbb8facf07a015ffb41a1a4de6fd4f82ed4e19fe1c
+  checksum: 10c0/9577e2ca93498f8ddf932cbb7ccf8af6ed6bea9b3fbc651237aad845e53c55f21aae11221f729b2c87e45003f559f6a1b1a142a3e1b2a5da31e8a98e1b92cde1
   languageName: node
   linkType: hard
 
@@ -1106,9 +1106,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@data-client/test@npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8":
-  version: 0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8
-  resolution: "@data-client/test@npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+"@data-client/test@npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda":
+  version: 0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda
+  resolution: "@data-client/test@npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
   dependencies:
     "@babel/runtime": "npm:^7.20.0 || ^8.0.0"
     "@testing-library/dom": "npm:^10.1.0"
@@ -1144,13 +1144,13 @@ __metadata:
       optional: true
     test-renderer:
       optional: true
-  checksum: 10c0/abd30d7e104f0e721550ebb4c11ce1c88fe10339858ef8646c5bf75f71cd8e1763d9d90972422d028c4e49cd5a983027819c2e56176f4b501c32053bd7d99f5c
+  checksum: 10c0/4dce8acc3b65731f1737267b6e3a40b49366ffbbb9c9ec1122d551f73b39c2b5144f422f961e05c223b4084e19cbccc5326db1ab82c10e432564007fd7335237
   languageName: node
   linkType: hard
 
-"@data-client/use-enhanced-reducer@npm:^0.2.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8":
-  version: 0.2.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8
-  resolution: "@data-client/use-enhanced-reducer@npm:0.2.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+"@data-client/use-enhanced-reducer@npm:^0.2.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda":
+  version: 0.2.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda
+  resolution: "@data-client/use-enhanced-reducer@npm:0.2.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
   dependencies:
     "@babel/runtime": "npm:^7.20.0 || ^8.0.0"
   peerDependencies:
@@ -1159,7 +1159,7 @@ __metadata:
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/7afa4ea6ea825b6f26f01dca83fb2d82c9f0c57e874d7a1311348b37d61a1fdc7d06fe44d4935804ba2d7891e7eb69ba0fcc01b7d912b56d390c164a15006a98
+  checksum: 10c0/d3cc9d0b39ebffc4764861fdeae064a0c5adb5f379ef7db9d57f3b5d0cfd3b0821828383b8f5a45bf4dbcb56138a9966fec031446c859cfc75588d751c2dd962
   languageName: node
   linkType: hard
 
@@ -8631,9 +8631,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "native-binance@workspace:."
   dependencies:
-    "@data-client/react": "npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+    "@data-client/react": "npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
     "@data-client/rest": "npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
-    "@data-client/test": "npm:0.19.0-beta-20261108121657-95822a3f4a308af2bd1636f8e619a77f630751b8"
+    "@data-client/test": "npm:0.19.0-beta-20261108175612-3ae266bf35a5a44fec04d951fc8503e0cb578dda"
     "@react-native/jest-preset": "npm:0.88.1"
     "@reactive/silk-core": "file:./vendor/silk-core.tgz"
     "@reactive/silk-native": "file:./vendor/silk-native.tgz"
