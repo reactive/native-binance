@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type ComponentProps,
   type JSX,
   type Ref,
@@ -343,10 +344,13 @@ function DeviceMark({
 
 function IntervalChips({
   value,
+  pending = false,
   onSelect,
   onWarm,
 }: {
   value: CandleInterval;
+  /** The selected period is still loading while the previous chart stays on screen. */
+  pending?: boolean;
   onSelect: (interval: CandleInterval) => void;
   onWarm?: (interval: CandleInterval) => void;
 }): JSX.Element {
@@ -360,6 +364,7 @@ function IntervalChips({
             testID={`interval-${item.value}`}
             label={item.label}
             selected={selected}
+            busy={selected && pending}
             onPress={() => onSelect(item.value)}
             onPressIn={onWarm ? () => onWarm(item.value) : undefined}
           />
@@ -1009,6 +1014,7 @@ function ChartFrame({
   const [pinned, setPinned] = useState<readonly Candle[] | null>(null);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const shell = useRef(new Animated.Value(1)).current;
+  const [loadingPeriod, startLoadingPeriod] = useTransition();
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -1031,6 +1037,8 @@ function ChartFrame({
   const revealedRef = useRef<Animated.Value | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const travelToken = useRef(0);
+  /** A period loading behind the current chart. `release` ends its transition when the user moves on. */
+  const awaitingRef = useRef<{ interval: CandleInterval; release: () => void } | null>(null);
   const widthRef = useRef(width);
   widthRef.current = width;
   const heightRef = useRef(height);
@@ -1108,6 +1116,8 @@ function ChartFrame({
     (interval: CandleInterval) => {
       // A fetch the user already left must not clear the reveal that replaced it.
       if (requestedRef.current !== interval) return false;
+      // The period loading behind the current chart travels in instead.
+      if (awaitingRef.current?.interval === interval) return false;
       const kind = phaseRef.current.kind;
       if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
       const at = revealAt(wait.current.startedAt, Date.now(), Date.now());
@@ -1256,6 +1266,117 @@ function ChartFrame({
     [runTravel],
   );
 
+  /** Ends the wait for a period loading behind the current chart. Its fetch keeps going, but nothing waits on it. */
+  const releaseAwaiting = useCallback(() => {
+    const awaiting = awaitingRef.current;
+    awaitingRef.current = null;
+    awaiting?.release();
+  }, []);
+
+  /**
+   * Travels from the pinned `origin` to `next`'s stored list.
+   * Falls back to a fade only when the planner refuses the geometry.
+   */
+  const travelFrom = useCallback(
+    (from: CandleInterval, next: CandleInterval, origin: Candle[], stored: readonly Candle[]) => {
+      const decided = travelAttempt(
+        controllerRef.current,
+        symbol,
+        from,
+        next,
+        origin,
+        snapshotCandles(readList(controllerRef.current, symbol, next).candles ?? stored),
+        widthRef.current,
+        heightRef.current,
+        canShow(next),
+        Date.now(),
+      );
+      if (!decided.ok) {
+        candlesRef.current = origin;
+        setPinned(null);
+        fadeOut(from);
+        if (!canShow(next)) {
+          ensureWait();
+          beginFetch(next);
+        }
+        return;
+      }
+      const session = buildSession(decided.plan, origin);
+      sessionRef.current = session;
+      shell.setValue(1);
+      const traveling: Phase = { kind: 'travel', session };
+      phaseRef.current = traveling;
+      setPhase(traveling);
+      setShown([]);
+      runTravel(session);
+    },
+    [beginFetch, canShow, ensureWait, fadeOut, runTravel, shell, symbol],
+  );
+
+  /**
+   * Keeps the current chart on screen while `next` loads, then travels to it.
+   * The transition stays pending until the list arrives, so the period pill can show it.
+   */
+  const loadThenTravel = useCallback(
+    (from: CandleInterval, next: CandleInterval, origin: Candle[]) => {
+      const token = travelToken.current;
+      const generation = ++wait.current.generation;
+      const current = () =>
+        token === travelToken.current &&
+        generation === wait.current.generation &&
+        phaseRef.current.kind === 'live' &&
+        awaitingRef.current?.interval === next;
+      const giveUp = () => {
+        releaseAwaiting();
+        failedRef.current = next;
+        candlesRef.current = origin;
+        setPinned(null);
+        fadeOut(from);
+      };
+      let release = () => {};
+      const released = new Promise<'released'>(resolve => {
+        release = () => resolve('released');
+      });
+      awaitingRef.current = { interval: next, release };
+      const request = Promise.resolve(controllerRef.current.fetch(getCandles, { symbol, interval: next }));
+      clearTimeout(wait.current.ceiling);
+      wait.current.ceiling = setTimeout(() => {
+        if (!current()) return;
+        giveUp();
+        // A late response still replaces the failure, as it does after a fade.
+        request.then(
+          () => {
+            if (generation !== wait.current.generation || requestedRef.current !== next) return;
+            acceptedRef.current = next;
+            if (failedRef.current === next) failedRef.current = null;
+            scheduleReveal(next);
+          },
+          () => {},
+        );
+      }, FAILURE_MS);
+      startLoadingPeriod(async () => {
+        let outcome: 'loaded' | 'released' | 'failed';
+        try {
+          outcome = await Promise.race([request.then(() => 'loaded' as const), released]);
+        } catch {
+          outcome = 'failed';
+        }
+        if (outcome === 'released' || !current()) return;
+        clearTimeout(wait.current.ceiling);
+        if (outcome === 'failed') {
+          giveUp();
+          return;
+        }
+        acceptedRef.current = next;
+        if (failedRef.current === next) failedRef.current = null;
+        releaseAwaiting();
+        // Urgent, not a transition: the travel clocks start now, so its first frame must commit now.
+        travelFrom(from, next, origin, []);
+      });
+    },
+    [fadeOut, releaseAwaiting, scheduleReveal, symbol, travelFrom],
+  );
+
   const onWarm = useCallback(
     (interval: CandleInterval) => {
       if (interval === requestedRef.current && phaseRef.current.kind !== 'fail') return;
@@ -1282,6 +1403,8 @@ function ChartFrame({
       if (next === requestedRef.current && current.kind !== 'fail') return;
       travelToken.current += 1;
       clearTimeout(wait.current.travel);
+      const wasAwaiting = awaitingRef.current != null;
+      releaseAwaiting();
       setPinned(null);
       const mounted = mountedInterval(current);
       const tapBack = mounted != null && next === mounted && current.kind === 'out';
@@ -1357,6 +1480,16 @@ function ChartFrame({
         return;
       }
 
+      if (current.kind === 'live' && next === mounted) {
+        // Back to the chart still on screen: drop the wait for the other period.
+        if (wasAwaiting) wait.current.generation += 1;
+        clearTimers(false);
+        failedRef.current = null;
+        setCaption(false);
+        onHoldRef.current(null);
+        return;
+      }
+
       const ready = canShow(next);
       const cut = reduceRef.current && ready;
       if (cut) {
@@ -1407,43 +1540,21 @@ function ChartFrame({
             const from = mounted;
             wait.current.travel = setTimeout(() => {
               if (token !== travelToken.current || phaseRef.current.kind !== 'live') return;
-              const latest = readList(controllerRef.current, symbol, next).candles ?? stored;
-              const fresh = snapshotCandles(latest);
-              const decidedAt = Date.now();
-              const decided = travelAttempt(
-                controllerRef.current,
-                symbol,
-                from,
-                next,
-                origin,
-                fresh,
-                widthRef.current,
-                heightRef.current,
-                canShow(next),
-                decidedAt,
-              );
-              if (!decided.ok) {
-                candlesRef.current = origin;
-                setPinned(null);
-                fadeOut(from);
-                if (!canShow(next)) {
-                  ensureWait();
-                  beginFetch(next);
-                }
-                return;
-              }
-              const session = buildSession(decided.plan, origin);
-              sessionRef.current = session;
-              shell.setValue(1);
-              const traveling: Phase = { kind: 'travel', session };
-              phaseRef.current = traveling;
-              setPhase(traveling);
-              setShown([]);
-              runTravel(session);
+              travelFrom(from, next, origin, stored);
             }, 0);
             return;
           }
         }
+      }
+
+      const showing = candlesRef.current;
+      if (current.kind === 'live' && mounted && !ready && showing && showing.length > 0) {
+        failedRef.current = null;
+        const origin = snapshotCandles(showing);
+        setPinned(origin);
+        onHoldRef.current(mounted);
+        loadThenTravel(mounted, next, origin);
+        return;
       }
 
       failedRef.current = null;
@@ -1462,7 +1573,22 @@ function ChartFrame({
         scheduleReveal(next);
       }
     },
-    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, onFadeDone, onInterval, runTravel, scheduleReveal, shell, steerTravel, symbol],
+    [
+      beginFetch,
+      canShow,
+      clearTimers,
+      ensureWait,
+      fadeOut,
+      loadThenTravel,
+      onFadeDone,
+      onInterval,
+      releaseAwaiting,
+      scheduleReveal,
+      shell,
+      steerTravel,
+      symbol,
+      travelFrom,
+    ],
   );
 
   const onLayout = useCallback(() => {
@@ -1636,6 +1762,8 @@ function ChartFrame({
   }, [phase.kind, published, scrubCandle]);
 
   useEffect(() => () => onScrubRef.current?.(null), []);
+  // React holds every async transition pending until all of them end, so an unmounted wait must end too.
+  useEffect(() => releaseAwaiting, [releaseAwaiting]);
 
   const mounted = mountedInterval(phase);
   const session = phase.kind === 'travel' || phase.kind === 'travel-out' ? phase.session : null;
@@ -1648,7 +1776,7 @@ function ChartFrame({
 
   return (
     <View style={styles.frame}>
-      <IntervalChips value={requested} onSelect={onSelect} onWarm={onWarm} />
+      <IntervalChips value={requested} pending={loadingPeriod} onSelect={onSelect} onWarm={onWarm} />
       {subscribed ?
         <LiveSeries
           key={subscribed}

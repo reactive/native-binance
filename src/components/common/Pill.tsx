@@ -7,17 +7,19 @@ type PillProps = {
   selected: boolean;
   onPress: () => void;
   onPressIn?: () => void;
+  /** Selected, and its content is still loading. */
+  busy?: boolean;
   testID: string;
 };
 
 /** 32px pill in a 44px hit target. Quote, sort, and interval use it. */
-export function Pill({ label, selected, onPress, onPressIn, testID }: PillProps): JSX.Element {
+export function Pill({ label, selected, busy = false, onPress, onPressIn, testID }: PillProps): JSX.Element {
   const { theme } = useTheme();
   return (
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, busy }}
       onPress={onPress}
       onPressIn={onPressIn}
       style={styles.hit}
@@ -31,7 +33,7 @@ export function Pill({ label, selected, onPress, onPressIn, testID }: PillProps)
           : null,
         ]}
       >
-        <Text role="label" tone={selected ? 'primary' : 'secondary'}>
+        <Text role="label" tone={selected && !busy ? 'primary' : 'secondary'}>
           {label}
         </Text>
       </View>
