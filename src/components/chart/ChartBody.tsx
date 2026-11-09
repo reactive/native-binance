@@ -10,7 +10,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
   type ComponentProps,
   type JSX,
   type Ref,
@@ -1014,7 +1013,7 @@ function ChartFrame({
   const [pinned, setPinned] = useState<readonly Candle[] | null>(null);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const shell = useRef(new Animated.Value(1)).current;
-  const [loadingPeriod, startLoadingPeriod] = useTransition();
+  const [awaiting, setAwaiting] = useState<CandleInterval | null>(null);
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -1037,8 +1036,8 @@ function ChartFrame({
   const revealedRef = useRef<Animated.Value | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const travelToken = useRef(0);
-  /** A period loading behind the current chart. `release` ends its transition when the user moves on. */
-  const awaitingRef = useRef<{ interval: CandleInterval; release: () => void } | null>(null);
+  /** The period loading behind the current chart. `awaiting` mirrors it for the busy pill. */
+  const awaitingRef = useRef<CandleInterval | null>(null);
   const widthRef = useRef(width);
   widthRef.current = width;
   const heightRef = useRef(height);
@@ -1117,7 +1116,7 @@ function ChartFrame({
       // A fetch the user already left must not clear the reveal that replaced it.
       if (requestedRef.current !== interval) return false;
       // The period loading behind the current chart travels in instead.
-      if (awaitingRef.current?.interval === interval) return false;
+      if (awaitingRef.current === interval) return false;
       const kind = phaseRef.current.kind;
       if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
       const at = revealAt(wait.current.startedAt, Date.now(), Date.now());
@@ -1268,9 +1267,8 @@ function ChartFrame({
 
   /** Ends the wait for a period loading behind the current chart. Its fetch keeps going, but nothing waits on it. */
   const releaseAwaiting = useCallback(() => {
-    const awaiting = awaitingRef.current;
     awaitingRef.current = null;
-    awaiting?.release();
+    setAwaiting(null);
   }, []);
 
   /**
@@ -1315,7 +1313,7 @@ function ChartFrame({
 
   /**
    * Keeps the current chart on screen while `next` loads, then travels to it.
-   * The transition stays pending until the list arrives, so the period pill can show it.
+   * The period pill shows the wait as busy.
    */
   const loadThenTravel = useCallback(
     (from: CandleInterval, next: CandleInterval, origin: Candle[]) => {
@@ -1325,7 +1323,7 @@ function ChartFrame({
         token === travelToken.current &&
         generation === wait.current.generation &&
         phaseRef.current.kind === 'live' &&
-        awaitingRef.current?.interval === next;
+        awaitingRef.current === next;
       const giveUp = () => {
         releaseAwaiting();
         failedRef.current = next;
@@ -1333,11 +1331,8 @@ function ChartFrame({
         setPinned(null);
         fadeOut(from);
       };
-      let release = () => {};
-      const released = new Promise<'released'>(resolve => {
-        release = () => resolve('released');
-      });
-      awaitingRef.current = { interval: next, release };
+      awaitingRef.current = next;
+      setAwaiting(next);
       const request = Promise.resolve(controllerRef.current.fetch(getCandles, { symbol, interval: next }));
       clearTimeout(wait.current.ceiling);
       wait.current.ceiling = setTimeout(() => {
@@ -1354,25 +1349,21 @@ function ChartFrame({
           () => {},
         );
       }, FAILURE_MS);
-      startLoadingPeriod(async () => {
-        let outcome: 'loaded' | 'released' | 'failed';
-        try {
-          outcome = await Promise.race([request.then(() => 'loaded' as const), released]);
-        } catch {
-          outcome = 'failed';
-        }
-        if (outcome === 'released' || !current()) return;
-        clearTimeout(wait.current.ceiling);
-        if (outcome === 'failed') {
+      request.then(
+        () => {
+          if (!current()) return;
+          clearTimeout(wait.current.ceiling);
+          acceptedRef.current = next;
+          if (failedRef.current === next) failedRef.current = null;
+          releaseAwaiting();
+          travelFrom(from, next, origin, []);
+        },
+        () => {
+          if (!current()) return;
+          clearTimeout(wait.current.ceiling);
           giveUp();
-          return;
-        }
-        acceptedRef.current = next;
-        if (failedRef.current === next) failedRef.current = null;
-        releaseAwaiting();
-        // Urgent, not a transition: the travel clocks start now, so its first frame must commit now.
-        travelFrom(from, next, origin, []);
-      });
+        },
+      );
     },
     [fadeOut, releaseAwaiting, scheduleReveal, symbol, travelFrom],
   );
@@ -1385,6 +1376,8 @@ function ChartFrame({
         () => {
           acceptedRef.current = interval;
           if (requestedRef.current !== interval) return;
+          // The wait behind the chart owns its own ceiling and travels when its fetch lands.
+          if (awaitingRef.current === interval) return;
           const kind = phaseRef.current.kind;
           if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
           clearTimeout(wait.current.ceiling);
@@ -1762,8 +1755,6 @@ function ChartFrame({
   }, [phase.kind, published, scrubCandle]);
 
   useEffect(() => () => onScrubRef.current?.(null), []);
-  // React holds every async transition pending until all of them end, so an unmounted wait must end too.
-  useEffect(() => releaseAwaiting, [releaseAwaiting]);
 
   const mounted = mountedInterval(phase);
   const session = phase.kind === 'travel' || phase.kind === 'travel-out' ? phase.session : null;
@@ -1776,7 +1767,7 @@ function ChartFrame({
 
   return (
     <View style={styles.frame}>
-      <IntervalChips value={requested} pending={loadingPeriod} onSelect={onSelect} onWarm={onWarm} />
+      <IntervalChips value={requested} pending={awaiting != null} onSelect={onSelect} onWarm={onWarm} />
       {subscribed ?
         <LiveSeries
           key={subscribed}
