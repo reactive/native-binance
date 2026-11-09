@@ -343,10 +343,13 @@ function DeviceMark({
 
 function IntervalChips({
   value,
+  pending = false,
   onSelect,
   onWarm,
 }: {
   value: CandleInterval;
+  /** The selected period is still loading while the previous chart stays on screen. */
+  pending?: boolean;
   onSelect: (interval: CandleInterval) => void;
   onWarm?: (interval: CandleInterval) => void;
 }): JSX.Element {
@@ -360,6 +363,7 @@ function IntervalChips({
             testID={`interval-${item.value}`}
             label={item.label}
             selected={selected}
+            busy={selected && pending}
             onPress={() => onSelect(item.value)}
             onPressIn={onWarm ? () => onWarm(item.value) : undefined}
           />
@@ -958,6 +962,11 @@ const LiveSeries = forwardRef(function LiveSeries(
   return null;
 });
 
+/** Empty or failed: the frames a fetched list may be revealed into. */
+function showsNoChart(phase: Phase): boolean {
+  return phase.kind === 'empty' || phase.kind === 'fail';
+}
+
 function mountedInterval(phase: Phase): CandleInterval | null {
   return phase.kind === 'live' || phase.kind === 'in' || phase.kind === 'out' ? phase.interval : null;
 }
@@ -1009,6 +1018,8 @@ function ChartFrame({
   const [pinned, setPinned] = useState<readonly Candle[] | null>(null);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const shell = useRef(new Animated.Value(1)).current;
+  /** A period is loading while the previous chart stays on screen. */
+  const [loadingBehind, setLoadingBehind] = useState(false);
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -1108,8 +1119,8 @@ function ChartFrame({
     (interval: CandleInterval) => {
       // A fetch the user already left must not clear the reveal that replaced it.
       if (requestedRef.current !== interval) return false;
-      const kind = phaseRef.current.kind;
-      if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
+      // Only a frame without a chart reveals one. A chart on screen fades out or travels instead.
+      if (!showsNoChart(phaseRef.current)) return false;
       const at = revealAt(wait.current.startedAt, Date.now(), Date.now());
       const delay = at - Date.now();
       clearTimeout(wait.current.reveal);
@@ -1133,30 +1144,42 @@ function ChartFrame({
     setPhase({ kind: 'fail' });
   }, []);
 
+  /** Marks `interval`'s fetched list as showable and clears its failure. */
+  const accept = useCallback((interval: CandleInterval) => {
+    acceptedRef.current = interval;
+    if (failedRef.current === interval) failedRef.current = null;
+  }, []);
+
+  /**
+   * Fetches `interval` with a 10s ceiling. By default a landed list is revealed and a failure shown;
+   * a caller holding a chart on screen passes its own `ready` and `failed`.
+   * A response after the ceiling still calls `ready`.
+   */
   const beginFetch = useCallback(
-    (interval: CandleInterval) => {
+    (interval: CandleInterval, handlers?: { ready: () => void; failed: () => void }) => {
+      const ready = handlers?.ready ?? (() => scheduleReveal(interval));
+      const failed = handlers?.failed ?? (() => showFailure(interval));
       const generation = ++wait.current.generation;
       clearTimeout(wait.current.ceiling);
       wait.current.ceiling = setTimeout(() => {
         if (wait.current.generation !== generation) return;
-        showFailure(interval);
+        failed();
       }, FAILURE_MS);
       const promise = controllerRef.current.fetch(getCandles, { symbol, interval });
       promise.then(
         () => {
           if (wait.current.generation !== generation) return;
           clearTimeout(wait.current.ceiling);
-          acceptedRef.current = interval;
-          if (failedRef.current === interval) failedRef.current = null;
-          scheduleReveal(interval);
+          accept(interval);
+          ready();
         },
         () => {
           if (wait.current.generation !== generation) return;
-          showFailure(interval);
+          failed();
         },
       );
     },
-    [scheduleReveal, showFailure, symbol],
+    [accept, scheduleReveal, showFailure, symbol],
   );
 
   const ensureWait = useCallback(() => {
@@ -1256,6 +1279,96 @@ function ChartFrame({
     [runTravel],
   );
 
+  /** Keeps the `from` chart on screen, frozen at `origin`, until a travel or fade takes it. */
+  const holdOrigin = useCallback((from: CandleInterval, origin: readonly Candle[]) => {
+    failedRef.current = null;
+    setPinned(origin);
+    onHoldRef.current(from);
+  }, []);
+
+  /** Lets go of the held `origin` chart and fades it out. */
+  const unpinAndFade = useCallback(
+    (from: CandleInterval, origin: readonly Candle[]) => {
+      candlesRef.current = origin;
+      setPinned(null);
+      fadeOut(from);
+    },
+    [fadeOut],
+  );
+
+  /**
+   * Travels from the held `origin` to `next`'s stored list.
+   * Falls back to a fade only when the planner refuses the geometry.
+   */
+  const travelFrom = useCallback(
+    (from: CandleInterval, next: CandleInterval, origin: Candle[]) => {
+      const decided = travelAttempt(
+        controllerRef.current,
+        symbol,
+        from,
+        next,
+        origin,
+        snapshotCandles(readList(controllerRef.current, symbol, next).candles ?? []),
+        widthRef.current,
+        heightRef.current,
+        canShow(next),
+        Date.now(),
+      );
+      if (!decided.ok) {
+        unpinAndFade(from, origin);
+        if (!canShow(next)) {
+          ensureWait();
+          beginFetch(next);
+        }
+        return;
+      }
+      const session = buildSession(decided.plan, origin);
+      sessionRef.current = session;
+      shell.setValue(1);
+      const traveling: Phase = { kind: 'travel', session };
+      phaseRef.current = traveling;
+      setPhase(traveling);
+      setShown([]);
+      runTravel(session);
+    },
+    [beginFetch, canShow, ensureWait, runTravel, shell, symbol, unpinAndFade],
+  );
+
+  /**
+   * Holds the `from` chart on screen while `next` loads, then travels to it.
+   * The period pill shows the wait as busy.
+   */
+  const loadThenTravel = useCallback(
+    (from: CandleInterval, next: CandleInterval, showing: readonly Candle[]) => {
+      const origin = snapshotCandles(showing);
+      holdOrigin(from, origin);
+      setLoadingBehind(true);
+      const token = travelToken.current;
+      // Still holding: no tap since, and the 10s ceiling has not faded the chart out.
+      const holding = () => token === travelToken.current && phaseRef.current.kind === 'live';
+      beginFetch(next, {
+        ready: () => {
+          if (!holding()) {
+            scheduleReveal(next);
+            return;
+          }
+          setLoadingBehind(false);
+          travelFrom(from, next, origin);
+        },
+        failed: () => {
+          if (!holding()) {
+            showFailure(next);
+            return;
+          }
+          setLoadingBehind(false);
+          failedRef.current = next;
+          unpinAndFade(from, origin);
+        },
+      });
+    },
+    [beginFetch, holdOrigin, scheduleReveal, showFailure, travelFrom, unpinAndFade],
+  );
+
   const onWarm = useCallback(
     (interval: CandleInterval) => {
       if (interval === requestedRef.current && phaseRef.current.kind !== 'fail') return;
@@ -1264,8 +1377,7 @@ function ChartFrame({
         () => {
           acceptedRef.current = interval;
           if (requestedRef.current !== interval) return;
-          const kind = phaseRef.current.kind;
-          if (kind === 'out' || kind === 'travel' || kind === 'travel-out') return;
+          if (!showsNoChart(phaseRef.current)) return;
           clearTimeout(wait.current.ceiling);
           if (failedRef.current === interval) failedRef.current = null;
           scheduleReveal(interval);
@@ -1282,9 +1394,10 @@ function ChartFrame({
       if (next === requestedRef.current && current.kind !== 'fail') return;
       travelToken.current += 1;
       clearTimeout(wait.current.travel);
+      setLoadingBehind(false);
       setPinned(null);
       const mounted = mountedInterval(current);
-      const tapBack = mounted != null && next === mounted && current.kind === 'out';
+      const tapBack = mounted != null && next === mounted && (current.kind === 'out' || current.kind === 'live');
 
       if (acceptedRef.current !== next) acceptedRef.current = null;
       requestedRef.current = next;
@@ -1400,50 +1513,22 @@ function ChartFrame({
             now,
           );
           if (probe.ok) {
-            failedRef.current = null;
-            setPinned(origin);
-            onHoldRef.current(mounted);
+            holdOrigin(mounted, origin);
             const token = travelToken.current;
             const from = mounted;
             wait.current.travel = setTimeout(() => {
               if (token !== travelToken.current || phaseRef.current.kind !== 'live') return;
-              const latest = readList(controllerRef.current, symbol, next).candles ?? stored;
-              const fresh = snapshotCandles(latest);
-              const decidedAt = Date.now();
-              const decided = travelAttempt(
-                controllerRef.current,
-                symbol,
-                from,
-                next,
-                origin,
-                fresh,
-                widthRef.current,
-                heightRef.current,
-                canShow(next),
-                decidedAt,
-              );
-              if (!decided.ok) {
-                candlesRef.current = origin;
-                setPinned(null);
-                fadeOut(from);
-                if (!canShow(next)) {
-                  ensureWait();
-                  beginFetch(next);
-                }
-                return;
-              }
-              const session = buildSession(decided.plan, origin);
-              sessionRef.current = session;
-              shell.setValue(1);
-              const traveling: Phase = { kind: 'travel', session };
-              phaseRef.current = traveling;
-              setPhase(traveling);
-              setShown([]);
-              runTravel(session);
+              travelFrom(from, next, origin);
             }, 0);
             return;
           }
         }
+      }
+
+      const showing = candlesRef.current;
+      if (current.kind === 'live' && mounted && !ready && showing && showing.length > 0) {
+        loadThenTravel(mounted, next, showing);
+        return;
       }
 
       failedRef.current = null;
@@ -1462,7 +1547,22 @@ function ChartFrame({
         scheduleReveal(next);
       }
     },
-    [beginFetch, canShow, clearTimers, ensureWait, fadeOut, onFadeDone, onInterval, runTravel, scheduleReveal, shell, steerTravel, symbol],
+    [
+      beginFetch,
+      canShow,
+      clearTimers,
+      ensureWait,
+      fadeOut,
+      loadThenTravel,
+      onFadeDone,
+      onInterval,
+      holdOrigin,
+      scheduleReveal,
+      shell,
+      steerTravel,
+      symbol,
+      travelFrom,
+    ],
   );
 
   const onLayout = useCallback(() => {
@@ -1648,7 +1748,7 @@ function ChartFrame({
 
   return (
     <View style={styles.frame}>
-      <IntervalChips value={requested} onSelect={onSelect} onWarm={onWarm} />
+      <IntervalChips value={requested} pending={loadingBehind} onSelect={onSelect} onWarm={onWarm} />
       {subscribed ?
         <LiveSeries
           key={subscribed}

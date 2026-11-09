@@ -224,6 +224,10 @@ function selected(interval: CandleInterval): boolean {
   return node(`interval-${interval}`)?.props.accessibilityState?.selected === true;
 }
 
+function busy(interval: CandleInterval): boolean {
+  return node(`interval-${interval}`)?.props.accessibilityState?.busy === true;
+}
+
 function plotSize() {
   const plot = node('candles');
   const readout = node('candle-readout');
@@ -342,7 +346,7 @@ function keepSize() {
   expect(size.readout?.height).toBe(40);
 }
 
-it('fades to a delayed 1h list without the first-load sentence', async () => {
+it('keeps the 15m chart while a delayed 1h list loads, then travels', async () => {
   mount({
     interval: '15m',
     seeds: [current15()],
@@ -355,23 +359,25 @@ it('fades to a delayed 1h list without the first-load sentence', async () => {
 
   await press('interval-1h');
   expect(selected('1h')).toBe(true);
+  expect(busy('1h')).toBe(true);
   expect(present('chart-loading')).toBe(false);
-  const outgoing = node('candle-series-15m');
-  expect(outgoing?.props.accessibilityElementsHidden).toBe(true);
-  expect(outgoing?.props.importantForAccessibility).toBe('no-hide-descendants');
   keepSize();
-  expect(present('chart-caption')).toBe(false);
 
-  await advance(399);
+  await advance(1999);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('candle-series-1h')).toBe(false);
+  expect(textOf('candle-close')).toBe('111');
   expect(present('chart-caption')).toBe(false);
   expect(present('chart-skeleton')).toBe(false);
-  await advance(1);
-  expect(textOf('chart-caption')).toBe('Loading 1h candles');
-  expect(present('chart-skeleton')).toBe(true);
-  expect(present('candle-series-1h')).toBe(false);
-  keepSize();
+  expect(busy('1h')).toBe(true);
 
-  await advance(1600);
+  await advance(1);
+  const origin = node('candle-series-15m');
+  expect(origin?.props.accessibilityElementsHidden).toBe(true);
+  expect(busy('1h')).toBe(false);
+
+  await advance(1500);
+  expect(present('candle-series-15m')).toBe(false);
   expect(present('candle-series-1h')).toBe(true);
   expect(textOf('candle-close')).toBe('222');
   expect(present('chart-caption')).toBe(false);
@@ -381,6 +387,7 @@ it('fades to a delayed 1h list without the first-load sentence', async () => {
 });
 
 it('holds the caption until 700ms when the list arrives at 450ms', async () => {
+  mockReducedMotion = true;
   mount({
     interval: '15m',
     seeds: [current15()],
@@ -402,7 +409,7 @@ it('holds the caption until 700ms when the list arrives at 450ms', async () => {
   expect(present('chart-caption')).toBe(false);
 });
 
-it('never mounts an intermediate interval when 1h resolves before 4h', async () => {
+it('travels to 4h, not 1h, when 1h resolves before 4h', async () => {
   mount({
     interval: '15m',
     seeds: [current15()],
@@ -413,13 +420,19 @@ it('never mounts an intermediate interval when 1h resolves before 4h', async () 
   await press('interval-1h');
   await press('interval-4h');
   expect(selected('4h')).toBe(true);
+  expect(busy('4h')).toBe(true);
 
   await advance(200);
   expect(present('candle-series-1h')).toBe(false);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(textOf('candle-close')).toBe('111');
   expect(fetches).toEqual(expect.arrayContaining(['1h', '4h']));
   expect(fetches).not.toContain('15m');
 
-  await advance(500);
+  await advance(300);
+  expect(node('candle-series-15m')?.props.accessibilityElementsHidden).toBe(true);
+  await advance(1500);
+  expect(present('candle-series-15m')).toBe(false);
   expect(present('candle-series-1h')).toBe(false);
   expect(present('candle-series-4h')).toBe(true);
   expect(textOf('candle-close')).toBe('444');
@@ -567,12 +580,14 @@ it('fetches a cached list from the previous minute and skips a current one', asy
 
   await press('interval-1w');
   expect(fetches).toContain('1w');
-  expect(textOf('candle-close')).not.toBe('50');
-  await advance(90);
+  expect(textOf('candle-close')).toBe('333');
+  await advance(799);
   expect(present('candle-series-1w')).toBe(false);
-  expect(textOf('candle-close')).not.toBe('444');
-  await advance(200);
-  expect(present('candle-series-1w')).toBe(true);
+  expect(textOf('candle-close')).toBe('333');
+  await advance(1);
+  expect(node('candle-series-4h')?.props.accessibilityElementsHidden).toBe(true);
+  await advance(1500);
+  expect(present('candle-series-4h')).toBe(false);
   expect(textOf('candle-close')).toBe('444');
 });
 
@@ -613,12 +628,16 @@ it('shows the 10s failure and replaces it when the response lands', async () => 
   });
   await settle();
   await press('interval-1h');
-  await advance(10_000);
+  await advance(9_999);
+  expect(present('candle-series-15m')).toBe(true);
+  expect(present('load-error')).toBe(false);
+  // The 15m chart fades out once the 10s ceiling passes.
+  await advance(91);
   expect(present('load-error')).toBe(true);
   expect(present('candle-series-1h')).toBe(false);
   expect(present('chart-loading')).toBe(false);
 
-  await advance(2_000);
+  await advance(1_910);
   expect(present('load-error')).toBe(false);
   expect(present('candle-series-1h')).toBe(true);
   expect(textOf('candle-close')).toBe('222');
@@ -712,14 +731,18 @@ it('fades in again when a series mounts a second time', async () => {
   mount({
     interval: '15m',
     seeds: [current15()],
-    delay: interval => (interval === '4h' ? 2000 : 0),
-    resolve: params => [row(period(Date.now(), params.interval), 111)],
+    delay: () => 0,
+    resolve: params => {
+      if (params.interval === '4h') throw new TypeError('Failed to fetch');
+      return [row(period(Date.now(), params.interval), 111)];
+    },
   });
   await settle();
   await press('interval-4h');
   await advance(90);
   expect(present('candle-series-15m')).toBe(false);
   expect(present('candle-series-4h')).toBe(false);
+  expect(present('load-error')).toBe(true);
 
   const timing = jest.spyOn(Animated, 'timing');
   await press('interval-15m');
@@ -734,7 +757,7 @@ it('fades in again when a series mounts a second time', async () => {
   expect(textOf('candle-close')).toBe('111');
 });
 
-it('keeps a cached reveal when an abandoned fetch finishes during the caption', async () => {
+it('keeps a travel to a cached list when an abandoned fetch finishes during it', async () => {
   mount({
     interval: '15m',
     seeds: [current15(), seed('4h', period(NOW, '4h'), 333)],
@@ -744,15 +767,18 @@ it('keeps a cached reveal when an abandoned fetch finishes during the caption', 
   await settle();
   await press('interval-1h');
   await advance(450);
-  expect(textOf('chart-caption')).toBe('Loading 1h candles');
+  expect(present('chart-caption')).toBe(false);
+  expect(present('candle-series-15m')).toBe(true);
   expect(present('candle-series-1h')).toBe(false);
 
   await press('interval-4h');
-  await advance(40);
-  expect(present('candle-series-4h')).toBe(false);
-  await advance(220);
+  await advance(1);
+  expect(busy('4h')).toBe(false);
+  expect(node('candle-series-15m')?.props.accessibilityElementsHidden).toBe(true);
+  await advance(1500);
   expect(present('candle-series-4h')).toBe(true);
   expect(present('candle-series-1h')).toBe(false);
+  expect(present('candle-series-15m')).toBe(false);
   expect(present('load-error')).toBe(false);
   expect(present('chart-loading')).toBe(false);
   expect(textOf('candle-close')).toBe('333');
@@ -884,6 +910,27 @@ it('travels when a press-in fetch resolves before touch-up', async () => {
   expect(present('candle-series-15m')).toBe(true);
   expect(present('candle-series-1h')).toBe(true);
   expect(selected('1h')).toBe(true);
+});
+
+it('travels when a slow press-in fetch resolves after touch-up', async () => {
+  mount({
+    interval: '15m',
+    seeds: [series('15m')],
+    delay: interval => (interval === '1h' ? 300 : 0),
+    resolve: params => series(params.interval).response,
+  });
+  await settle();
+  await pressIn('interval-1h');
+  await press('interval-1h');
+  expect(busy('1h')).toBe(true);
+  expect(present('candle-series-15m')).toBe(true);
+  await advance(300);
+  expect(node('candle-series-15m')?.props.accessibilityElementsHidden).toBe(true);
+  expect(present('chart-caption')).toBe(false);
+  await advance(1500);
+  expect(present('candle-series-15m')).toBe(false);
+  expect(present('candle-series-1h')).toBe(true);
+  expect(busy('1h')).toBe(false);
 });
 
 it('reverses a travel without a fetch and fades a third pill', async () => {
