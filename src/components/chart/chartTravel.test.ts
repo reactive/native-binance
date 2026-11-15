@@ -220,57 +220,98 @@ it('uses a stale but usable list and derives a step whose list is too old', () =
   expect(without.steps.map(step => step.interval)).toEqual(['1m', '5m', '15m', '1h', '4h']);
 });
 
+function close(failures: string[], label: string, actual: number, expected: number, digits: number) {
+  // Same predicate as toBeCloseTo, so NaN fails instead of comparing as not-greater.
+  if (!(Math.abs(actual - expected) < 10 ** -digits / 2)) failures.push(`${label}: ${actual} vs ${expected}`);
+}
+
 it('matches rest frames, 40% handoffs, slot months, and non-overlapping candles', () => {
+  const failures: string[] = [];
   for (const [from, to] of PAIRS) {
-    for (const pair of [
+    for (const [start, endInterval] of [
       [from, to],
       [to, from],
     ] as const) {
-      const plan = assume(pair[0], pair[1]);
+      const plan = assume(start, endInterval);
+      const name = `${start}->${endInterval}`;
       const newestLeft = WIDTH * RATIO - plan.slot;
-      expect(plan.xStar).toBeGreaterThanOrEqual(newestLeft - 1e-6);
-      expect(plan.xStar).toBeLessThanOrEqual(newestLeft + plan.slot + 1e-6);
+      const xMin = newestLeft - 1e-6;
+      const xMax = newestLeft + plan.slot + 1e-6;
+      if (!(plan.xStar >= xMin && plan.xStar <= xMax)) failures.push(`${name} xStar ${plan.xStar}`);
       for (const end of [0, 1]) {
         const q = end === 0 ? 0 : 1;
         const interval = end === 0 ? plan.from : plan.to;
         const index = plan.steps.findIndex(step => step.interval === interval);
         const camera = plan.steps[index];
         const at = end === 0 ? 0 : camera.input.length - 1;
-        expect(camera.scaleX[at]).toBeCloseTo(1, 6);
-        expect(camera.translateX[at]).toBeCloseTo(0, 6);
-        expect(camera.scaleY[at]).toBeCloseTo(1, 6);
-        expect(camera.translateY[at]).toBeCloseTo(0, 6);
+        close(failures, `${name} scaleX`, camera.scaleX[at], 1, 6);
+        close(failures, `${name} translateX`, camera.translateX[at], 0, 6);
+        close(failures, `${name} scaleY`, camera.scaleY[at], 1, 6);
+        close(failures, `${name} translateY`, camera.translateY[at], 0, 6);
+        let shift = 0;
         for (const candle of camera.candles) {
-          const shift = camera.shifts.get(candle.openTime)?.[at] ?? 0;
-          expect(shift).toBeCloseTo(0, 4);
+          shift = Math.max(shift, Math.abs(camera.shifts.get(candle.openTime)?.[at] ?? 0));
         }
-        for (const other of plan.steps) {
-          if (other.interval === interval) continue;
+        close(failures, `${name} shift`, shift, 0, 4);
+        plan.steps.forEach((other, otherIndex) => {
+          if (other.interval === interval) return;
+          const sigma = stepSigma(plan, otherIndex, q);
+          let right = Number.NEGATIVE_INFINITY;
           for (const candle of other.candles) {
-            const sigma = stepSigma(plan, plan.steps.indexOf(other), q);
-            const drawn = sigma >= 0.4 - 1e-8 && (!other.split || !other.covered.has(candle.openTime) || sigma <= other.birthSigma + 1e-8);
+            const drawn =
+              sigma >= 0.4 - 1e-8 &&
+              (!other.split || !other.covered.has(candle.openTime) || sigma <= other.birthSigma + 1e-8);
             if (!drawn) continue;
-            expect(markRight(plan, plan.steps.indexOf(other), candle.openTime, q)).toBeLessThan(1e-3);
+            right = Math.max(right, markRight(plan, otherIndex, candle.openTime, q));
           }
-        }
+          if (!(right < 1e-3)) failures.push(`${name} ${other.interval} right ${right}`);
+        });
       }
-      expect(stepSigma(plan, 0, plan.zoomOut ? plan.steps[0].qAlive1 : plan.steps[0].qAlive0)).toBeCloseTo(0.4, 5);
+      const handoff = stepSigma(plan, 0, plan.zoomOut ? plan.steps[0].qAlive1 : plan.steps[0].qAlive0);
+      close(failures, `${name} handoff`, handoff, 0.4, 5);
       for (let index = 1; index < plan.steps.length; index += 1) {
         const step = plan.steps[index];
-        const centres = step.candles.map(candle => markCentre(plan, index, candle.openTime, 0.5));
-        for (let candle = 1; candle < centres.length; candle += 1) {
-          if (stepSigma(plan, index, 0.5) < 1) continue;
-          expect(Math.abs(centres[candle] - centres[candle - 1])).toBeGreaterThanOrEqual(plan.slot - 1e-4);
+        if (step.candles.length < 2 || stepSigma(plan, index, 0.5) < 1) continue;
+        let previous = markCentre(plan, index, step.candles[0].openTime, 0.5);
+        for (let candle = 1; candle < step.candles.length; candle += 1) {
+          const centre = markCentre(plan, index, step.candles[candle].openTime, 0.5);
+          if (!(Math.abs(centre - previous) >= plan.slot - 1e-4)) {
+            failures.push(`${name} ${step.interval} overlap`);
+            break;
+          }
+          previous = centre;
         }
       }
     }
   }
   const month = assume('1w', '1M');
   const months = month.steps[1];
-  months.candles.forEach(candle => {
-    expect(markCentre(month, 1, candle.openTime, 1)).toBeCloseTo(months.centres.get(candle.openTime) ?? 0, 4);
-  });
+  let centreDelta = 0;
+  for (const candle of months.candles) {
+    centreDelta = Math.max(
+      centreDelta,
+      Math.abs(markCentre(month, 1, candle.openTime, 1) - (months.centres.get(candle.openTime) ?? 0)),
+    );
+  }
+  close(failures, 'month centre', centreDelta, 0, 4);
+  expect(failures).toEqual([]);
 });
+
+/** A week/month plan changes only when the week or the month containing `now` changes. */
+function alignmentDays(start: number, end: number): number[] {
+  const days: number[] = [];
+  let day = start;
+  while (day <= end) {
+    days.push(day);
+    const next = Math.min(
+      stepPeriodEnd(stepPeriodStart(day, '1w'), '1w'),
+      stepPeriodEnd(stepPeriodStart(day, '1M'), '1M'),
+    );
+    if (next <= day) break;
+    day = next;
+  }
+  return days;
+}
 
 it('keeps a straddling week inside its months and off the week rest chart', () => {
   let worst = 0;
@@ -278,7 +319,7 @@ it('keeps a straddling week inside its months and off the week rest chart', () =
   let shown = 0;
   const start = Date.parse('2020-01-01T00:00:00.000Z');
   const end = Date.parse('2031-12-31T00:00:00.000Z');
-  for (let day = start; day <= end; day += DAY) {
+  for (const day of alignmentDays(start, end)) {
     const weeks = build('1w', 60, day);
     const months = build('1M', 60, day);
     const zoomOut = planTravel(input('1w', '1M', { now: day, origin: weeks, target: months, detail: false }));
@@ -292,8 +333,8 @@ it('keeps a straddling week inside its months and off the week rest chart', () =
     const month = plan.steps[1];
     const qH = week.qAlive1;
     if (Math.abs(stepSigma(plan, 0, qH) - 0.4) > 1e-4) refused += 1;
+    const sigma = stepSigma(plan, 1, 0);
     for (const candle of month.candles) {
-      const sigma = stepSigma(plan, 1, 0);
       const drawn =
         sigma >= 0.4 - 1e-8 && (!month.covered.has(candle.openTime) || sigma <= month.birthSigma + 1e-6);
       if (!drawn) continue;
@@ -394,7 +435,9 @@ it('falls back when a gate fails', () => {
 });
 
 it('travels on the light plan when every plan is over budget', () => {
-  const decided = planTravel(input('1m', '1M', { origin: build('1m', 300), target: build('1M', 300, NOW, 3) }));
+  // The month step stays attached on every plan. One more candle than the budget is enough.
+  const heavy = Math.ceil(UPDATE_BUDGET_US / UPDATE_US) + 1;
+  const decided = planTravel(input('1m', '1M', { origin: build('1m'), target: build('1M', heavy, NOW, 3) }));
   if (!decided.ok) throw new Error(decided.reason);
   expect(decided.plan.peakViews * UPDATE_US).toBeGreaterThan(UPDATE_BUDGET_US);
 });

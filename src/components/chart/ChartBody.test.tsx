@@ -153,6 +153,7 @@ function fireLayouts() {
 }
 
 async function flush() {
+  // A fetch or a press settles across several macrotasks. One turn leaves the tree mid-update.
   for (let i = 0; i < 6; i += 1) {
     await act(async () => {
       await new Promise<void>(resolve => {
@@ -160,6 +161,31 @@ async function flush() {
       });
     });
   }
+}
+
+// SpringAnimation moves at most 64ms per frame. These tests also read the clock
+// a few dozen milliseconds in, so the frame stays inside both limits.
+const SPRING_FRAME_MS = 32;
+
+function installSpringFrames() {
+  const pending = new Map<number, ReturnType<typeof setTimeout>>();
+  let nextId = 0;
+  globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
+    const id = ++nextId;
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      callback(Date.now());
+    }, SPRING_FRAME_MS);
+    pending.set(id, timer);
+    return id;
+  };
+  globalThis.cancelAnimationFrame = (id: number | null | undefined) => {
+    if (id == null) return;
+    const timer = pending.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    pending.delete(id);
+  };
 }
 
 async function advance(ms: number) {
@@ -323,6 +349,7 @@ beforeEach(() => {
     now: NOW,
     doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'],
   });
+  installSpringFrames();
 });
 
 afterEach(() => {

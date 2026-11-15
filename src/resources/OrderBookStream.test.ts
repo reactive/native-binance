@@ -224,9 +224,10 @@ it('resyncs the first diff after reconnect without emptying the book', async () 
     note();
     expect(result.current.lastUpdateId).toBe(105);
 
+    jest.useFakeTimers();
     socket()?.close();
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 520));
+      await jest.advanceTimersByTimeAsync(500);
     });
     expect(sockets()).toBe(2);
     expect(FakeSocket.instances[1].url).toBe(URL);
@@ -248,6 +249,7 @@ it('resyncs the first diff after reconnect without emptying the book', async () 
     expect(result.current.bestBid).toBe(110);
     expect(seen.every(id => id > 0)).toBe(true);
   } finally {
+    jest.useRealTimers();
     stream.cleanup();
   }
 });
