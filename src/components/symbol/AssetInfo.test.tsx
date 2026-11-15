@@ -157,7 +157,7 @@ function screenFixtures(
 
 function wait(ms: number) {
   return act(async () => {
-    await new Promise(resolve => setTimeout(resolve, ms));
+    await jest.advanceTimersByTimeAsync(ms);
   });
 }
 
@@ -185,6 +185,7 @@ function unmount() {
 
 afterEach(() => {
   unmount();
+  jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
@@ -264,6 +265,7 @@ function flat(testID: string) {
 }
 
 beforeEach(() => {
+  jest.useFakeTimers({ doNotFake: ['Date'] });
   jest.spyOn(Date, 'now').mockReturnValue(NOW);
 });
 
@@ -763,7 +765,6 @@ it('shows the stored path before a stale refresh adds a row', async () => {
 });
 
 it('shows the primers after token-info is still pending at 10 seconds', async () => {
-  jest.useFakeTimers({ doNotFake: ['Date'] });
   const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     const url = String(input);
     if (!url.includes('token-info')) return Promise.reject(new Error(`unexpected ${url}`));
@@ -801,6 +802,5 @@ it('shows the primers after token-info is still pending at 10 seconds', async ()
     expect(ROW_IDS.every(id => node(id))).toBe(true);
   } finally {
     fetchSpy.mockRestore();
-    jest.useRealTimers();
   }
 });

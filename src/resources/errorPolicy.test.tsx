@@ -69,7 +69,9 @@ it('throws when the first read fails and nothing is stored', async () => {
   );
 
   await act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise<void>(resolve => {
+      setImmediate(() => resolve());
+    });
   });
   expect(result.error).toBeInstanceOf(TypeError);
   expect((result.error as TypeError).message).toBe('Failed to fetch');
@@ -110,7 +112,9 @@ it('keeps the ticker socket subscribed when the first ticker read fails', async 
   );
 
   await act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise<void>(resolve => {
+      setImmediate(() => resolve());
+    });
   });
   expect(subscribed).toContain(getTickers);
   act(() => {
