@@ -221,7 +221,8 @@ it('uses a stale but usable list and derives a step whose list is too old', () =
 });
 
 function close(failures: string[], label: string, actual: number, expected: number, digits: number) {
-  if (Math.abs(actual - expected) >= 10 ** -digits / 2) failures.push(`${label}: ${actual} vs ${expected}`);
+  // Same predicate as toBeCloseTo, so NaN fails instead of comparing as not-greater.
+  if (!(Math.abs(actual - expected) < 10 ** -digits / 2)) failures.push(`${label}: ${actual} vs ${expected}`);
 }
 
 it('matches rest frames, 40% handoffs, slot months, and non-overlapping candles', () => {
@@ -234,9 +235,9 @@ it('matches rest frames, 40% handoffs, slot months, and non-overlapping candles'
       const plan = assume(start, endInterval);
       const name = `${start}->${endInterval}`;
       const newestLeft = WIDTH * RATIO - plan.slot;
-      if (plan.xStar < newestLeft - 1e-6 || plan.xStar > newestLeft + plan.slot + 1e-6) {
-        failures.push(`${name} xStar ${plan.xStar}`);
-      }
+      const xMin = newestLeft - 1e-6;
+      const xMax = newestLeft + plan.slot + 1e-6;
+      if (!(plan.xStar >= xMin && plan.xStar <= xMax)) failures.push(`${name} xStar ${plan.xStar}`);
       for (const end of [0, 1]) {
         const q = end === 0 ? 0 : 1;
         const interval = end === 0 ? plan.from : plan.to;
@@ -263,7 +264,7 @@ it('matches rest frames, 40% handoffs, slot months, and non-overlapping candles'
             if (!drawn) continue;
             right = Math.max(right, markRight(plan, otherIndex, candle.openTime, q));
           }
-          if (right >= 1e-3) failures.push(`${name} ${other.interval} right ${right}`);
+          if (!(right < 1e-3)) failures.push(`${name} ${other.interval} right ${right}`);
         });
       }
       const handoff = stepSigma(plan, 0, plan.zoomOut ? plan.steps[0].qAlive1 : plan.steps[0].qAlive0);
@@ -274,7 +275,7 @@ it('matches rest frames, 40% handoffs, slot months, and non-overlapping candles'
         let previous = markCentre(plan, index, step.candles[0].openTime, 0.5);
         for (let candle = 1; candle < step.candles.length; candle += 1) {
           const centre = markCentre(plan, index, step.candles[candle].openTime, 0.5);
-          if (Math.abs(centre - previous) < plan.slot - 1e-4) {
+          if (!(Math.abs(centre - previous) >= plan.slot - 1e-4)) {
             failures.push(`${name} ${step.interval} overlap`);
             break;
           }
